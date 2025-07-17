@@ -13,15 +13,26 @@ module.exports = function(RED) {
         
         function scanAllNodes() {
             let totalIssues = 0;
+            let nodesWithIssues = 0;
             
-            // Use RED.nodes.eachNode to iterate through all nodes
+            // First, clear all existing statuses
             RED.nodes.eachNode(function (nodeConfig) {
-                node.warn(nodeConfig);
+                if (nodeConfig.type === 'function') {
+                    const functionNode = RED.nodes.getNode(nodeConfig.id);
+                    if (functionNode && functionNode.status) {
+                        functionNode.status({});
+                    }
+                }
+            });
+            
+            // Now scan for issues
+            RED.nodes.eachNode(function (nodeConfig) {
                 if (nodeConfig.type === 'function' && nodeConfig.func) {
                     const issues = detectDebuggingTraits(nodeConfig.func, node.detectionLevel);
                     
                     if (issues.length > 0) {
                         totalIssues += issues.length;
+                        nodesWithIssues++;
                         
                         // Try to get the actual node instance
                         const functionNode = RED.nodes.getNode(nodeConfig.id);
@@ -34,12 +45,6 @@ module.exports = function(RED) {
                         }
                         
                         node.warn(`Function node ${nodeConfig.id} (${nodeConfig.name || 'unnamed'}) has debugging issues: ${issues.join(', ')}`);
-                    } else {
-                        // Clear status if no issues
-                        const functionNode = RED.nodes.getNode(nodeConfig.id);
-                        if (functionNode && functionNode.status) {
-                            functionNode.status({});
-                        }
                     }
                 }
             });
@@ -49,7 +54,7 @@ module.exports = function(RED) {
                 node.status({
                     fill: "yellow",
                     shape: "dot",
-                    text: `Found ${totalIssues} debugging traits`
+                    text: `Found ${totalIssues} debugging traits in ${nodesWithIssues} nodes`
                 });
             } else {
                 node.status({
