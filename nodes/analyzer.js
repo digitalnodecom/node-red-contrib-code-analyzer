@@ -11,13 +11,16 @@ module.exports = function(RED) {
         
         let scanTimer;
         
-        function scanAllNodes() {
+        function scanCurrentFlow() {
             let totalIssues = 0;
             let nodesWithIssues = 0;
             
-            // First, clear all existing statuses
+            // Get the current flow ID from this analyzer node
+            const currentFlowId = node.z;
+            
+            // First, clear all existing statuses in the current flow
             RED.nodes.eachNode(function (nodeConfig) {
-                if (nodeConfig.type === 'function') {
+                if (nodeConfig.type === 'function' && nodeConfig.z === currentFlowId) {
                     const functionNode = RED.nodes.getNode(nodeConfig.id);
                     if (functionNode && functionNode.status) {
                         functionNode.status({});
@@ -25,9 +28,9 @@ module.exports = function(RED) {
                 }
             });
             
-            // Now scan for issues
+            // Now scan for issues in the current flow only
             RED.nodes.eachNode(function (nodeConfig) {
-                if (nodeConfig.type === 'function' && nodeConfig.func) {
+                if (nodeConfig.type === 'function' && nodeConfig.func && nodeConfig.z === currentFlowId) {
                     const issues = detectDebuggingTraits(nodeConfig.func, node.detectionLevel);
                     
                     if (issues.length > 0) {
@@ -68,17 +71,17 @@ module.exports = function(RED) {
         // Start scanning
         function startScanning() {
             // Initial scan
-            scanAllNodes();
+            scanCurrentFlow();
             
             // Set up periodic scanning
             if (node.scanInterval > 0) {
-                scanTimer = setInterval(scanAllNodes, node.scanInterval);
+                scanTimer = setInterval(scanCurrentFlow, node.scanInterval);
             }
         }
         
         // Handle input messages (manual trigger)
         node.on('input', function(msg) {
-            scanAllNodes();
+            scanCurrentFlow();
             msg.payload = { action: 'scan_completed', timestamp: new Date().toISOString() };
             node.send(msg);
         });
