@@ -26,6 +26,7 @@ Includes Level 1 plus:
 ### Level 3: Comprehensive Issues
 Includes Level 2 plus:
 - **Hardcoded test values**: Common test patterns like `= "test"`, `= "debug"`, `= "temp"`, `= 123`
+- **Multiple empty lines**: 2 or more consecutive empty lines
 
 ## Installation
 
@@ -105,6 +106,12 @@ let testValue = "test";  // ← This will be flagged
 let debugVar = "debug";  // ← This will be flagged
 let tempVar = "temp";    // ← This will be flagged
 let number = 123;        // ← This will be flagged
+
+// Multiple empty lines
+let x = 1;
+
+
+let y = 2;  // ← The excessive empty lines above will be flagged
 ```
 
 ## Troubleshooting
