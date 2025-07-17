@@ -171,8 +171,9 @@
                                 type: "multiple-empty-lines",
                                 message: `Remove excessive empty lines (${consecutiveEmptyLines} consecutive empty lines)`,
                                 line: emptyLineStart + 1,
+                                endLine: emptyLineStart + consecutiveEmptyLines,
                                 column: 1,
-                                endColumn: 1,
+                                endColumn: 100,
                                 severity: "info"
                             });
                         }
@@ -185,8 +186,9 @@
                         type: "multiple-empty-lines",
                         message: `Remove excessive empty lines (${consecutiveEmptyLines} consecutive empty lines)`,
                         line: emptyLineStart + 1,
+                        endLine: emptyLineStart + consecutiveEmptyLines,
                         column: 1,
-                        endColumn: 1,
+                        endColumn: 100,
                         severity: "info"
                     });
                 }
@@ -227,7 +229,7 @@
                                         const markers = errors.map(error => ({
                                             startLineNumber: error.line,
                                             startColumn: error.column,
-                                            endLineNumber: error.line,
+                                            endLineNumber: error.endLine || error.line,
                                             endColumn: error.endColumn,
                                             message: error.message,
                                             severity: error.severity === 'warning' ? 
@@ -239,7 +241,7 @@
                                         monaco.editor.setModelMarkers(editorInstance.getModel(), 'debug-checker', markers);
                                         
                                         const decorations = errors.map(error => ({
-                                            range: new monaco.Range(error.line, 1, error.line, 1),
+                                            range: new monaco.Range(error.line, 1, error.endLine || error.line, 1),
                                             options: {
                                                 isWholeLine: true,
                                                 className: error.severity === 'warning' ? 
