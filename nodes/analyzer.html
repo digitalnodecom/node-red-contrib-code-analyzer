@@ -19,6 +19,69 @@
         },
         oneditsave: function() {
             // No special save handling needed for detection level
+        },
+    });
+    
+</script>
+
+<script type="text/javascript">
+    // Global event listener for function node opening - runs when Node-RED editor loads
+    $(document).ready(function() {        
+        // Hook into the code editor creation/opening
+        if (RED.editor.codeEditor) {
+            const originalCreateEditor = RED.editor.codeEditor.create;
+            if (originalCreateEditor) {
+                RED.editor.codeEditor.create = function(options) {
+                    const editor = originalCreateEditor.apply(this, arguments);
+                    
+                    // Check if this is for a function node main editor
+                    if (options && options.id === 'node-input-init-editor') {                        
+                        // Extract node ID from stateId
+                        let nodeId = null;
+                        if (options.stateId) {
+                            nodeId = options.stateId.split('/')[0];
+                            console.log('Extracted node ID from stateId:', nodeId);
+                        }
+                        
+                        // Get the current node using the extracted ID
+                        const currentNode = nodeId ? RED.nodes.node(nodeId) : null;
+                        console.log('Current node:', currentNode);
+                        console.log('Current editor:', editor);
+                        console.log('Editor options:', options);
+                        
+                        if (currentNode && currentNode.type === 'function') {
+                            // Get the detection level from the analyzer node in the same flow
+                            let detectionLevel = 1; // default
+                            RED.nodes.eachNode(function(node) {
+                                if (node.type === 'code-analyzer' && node.z === currentNode.z) {
+                                    detectionLevel = node.detectionLevel || 1;
+                                }
+                            });
+                            
+                            console.log('Detection level for this flow:', detectionLevel);
+                            
+                            // Check if we have stored debug issues
+                            if (currentNode._debugIssues) {
+                                console.log('Errors found for currently opened function node:');
+                                console.log('Total errors:', currentNode._debugIssues.length);
+                                
+                                currentNode._debugIssues.forEach((error, index) => {
+                                    console.log(`Error ${index + 1}:`, {
+                                        message: error.message,
+                                        line: error.line,
+                                        type: error.type,
+                                        severity: error.severity
+                                    });
+                                });
+                            } else {
+                                console.log('No debug issues found for this function node');
+                            }
+                        }
+                    }
+                    
+                    return editor;
+                };
+            }
         }
     });
 </script>

@@ -37,6 +37,9 @@ module.exports = function(RED) {
                         totalIssues += issues.length;
                         nodesWithIssues++;
                         
+                        // Store detailed issues for Monaco integration
+                        nodeConfig._debugIssues = issues;
+                        
                         // Try to get the actual node instance
                         const functionNode = RED.nodes.getNode(nodeConfig.id);
                         if (functionNode && functionNode.status) {
@@ -47,7 +50,11 @@ module.exports = function(RED) {
                             });
                         }
                         
-                        node.warn(`Function node ${nodeConfig.id} (${nodeConfig.name || 'unnamed'}) has debugging issues: ${issues.join(', ')}`);
+                        const issueMessages = issues.map(issue => issue.message || issue);
+                        node.warn(`Function node ${nodeConfig.id} (${nodeConfig.name || 'unnamed'}) has debugging issues: ${issueMessages.join(', ')}`);
+                    } else {
+                        // Clear stored issues if no problems found
+                        delete nodeConfig._debugIssues;
                     }
                 }
             });
