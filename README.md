@@ -65,7 +65,10 @@ npm install
 - **Yellow dot**: Found debugging traits (shows count)
 
 ### Function Nodes
-- **Red dot**: "debugging traits noticed" when issues are detected
+Function nodes display colored status indicators based on the highest priority issue detected:
+- **Red dot**: Contains Level 1 issues (critical top-level returns)
+- **Orange dot**: Contains Level 2 issues (no Level 1 issues present)
+- **Yellow dot**: Contains only Level 3 issues
 - **No status**: Clean function node with no issues
 
 ## Manual Scanning

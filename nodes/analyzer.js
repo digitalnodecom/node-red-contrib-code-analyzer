@@ -37,10 +37,24 @@ module.exports = function(RED) {
                         
                         const functionNode = RED.nodes.getNode(nodeConfig.id);
                         if (functionNode && functionNode.status) {
+                            let statusColor = "blue";
+                            let text = "Minor debug traits noticed";
+                            
+                            const hasLevel1 = issues.some(issue => issue.type === "top-level-return");
+                            const hasLevel2 = issues.some(issue => issue.type === "node-warn" || issue.type === "todo-comment");
+                            
+                            if (hasLevel1) {
+                                statusColor = "red";
+                                text = "Severe debugging traits."
+                            } else if (hasLevel2) {
+                                statusColor = "yellow";
+                                text = "Important debugging traits."
+                            }
+                            
                             functionNode.status({
-                                fill: "red",
+                                fill: statusColor,
                                 shape: "dot",
-                                text: `debugging traits noticed`
+                                text
                             });
                         }
                         
