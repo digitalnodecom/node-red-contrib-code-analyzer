@@ -1,23 +1,31 @@
 # Node-RED Code Analyzer
 
-A Node-RED package that continuously monitors all function nodes across all flows to detect debugging artifacts and forgotten debugging code.
+A Node-RED package that continuously monitors all function nodes in the current flow to detect debugging artifacts and forgotten debugging code. Features Monaco editor integration with real-time highlighting and problem markers.
 
 ## Features
 
-- **Background monitoring**: Continuously scans all function nodes across all flows
+- **Background monitoring**: Continuously scans all function nodes in the current flow
 - **Visual indicators**: Shows red status indicators on function nodes with debugging issues
-- **Configurable detection**: Choose which types of debugging artifacts to detect
-- **Set-and-forget**: Works automatically across all flows without modifying existing nodes
+- **Level-based detection**: Choose detection strictness from 3 predefined levels
+- **Monaco editor integration**: Highlights problematic lines with markers and visual indicators
+- **Set-and-forget**: Works automatically within the current flow without modifying existing nodes
 
-## Detection Capabilities
+## Detection Levels
 
-The analyzer detects:
+The analyzer provides 3 levels of detection strictness:
 
-- **Standalone return statements**: `return;` statements that exit functions early
-- **Console.log statements**: Left-over debugging output
-- **TODO/FIXME comments**: Development reminders
-- **Debugger statements**: JavaScript debugger calls
-- **Hardcoded test values**: Common test patterns like `= "test"` or `= 123`
+### Level 1: Critical Issues
+Detects only the most critical debugging artifacts:
+- **Top-level return statements**: `return;` statements at the function's top level (not inside blocks)
+
+### Level 2: Standard Issues
+Includes Level 1 plus:
+- **node.warn() statements**: Debugging output using Node-RED's warning system
+- **TODO/FIXME comments**: Development reminders with colon syntax (`TODO:`, `FIXME:`)
+
+### Level 3: Comprehensive Issues
+Includes Level 2 plus:
+- **Hardcoded test values**: Common test patterns like `= "test"`, `= "debug"`, `= "temp"`, `= 123`
 
 ## Installation
 
@@ -38,14 +46,15 @@ npm install
 ## Usage
 
 1. **Add the analyzer node**: Drag a "Code Analyzer" node from the utility category into any flow
-2. **Configure settings**: Double-click to configure scan interval and enabled checks
-3. **Deploy**: The analyzer will automatically start scanning all function nodes
+2. **Configure settings**: Double-click to configure scan interval and detection level
+3. **Deploy**: The analyzer will automatically start scanning all function nodes in the current flow
 4. **Monitor**: Function nodes with debugging issues will show red status indicators
+5. **Edit function nodes**: When you open a function node with issues, you'll see highlighted lines and problem markers in the Monaco editor
 
 ## Configuration Options
 
 - **Scan Interval**: How often to scan all function nodes (default: 30 seconds)
-- **Enable Checks**: Select which types of debugging artifacts to detect
+- **Detection Level**: Choose from 3 levels of detection strictness (1, 2, or 3)
 - **Auto Start**: Whether to start scanning automatically when deployed
 
 ## Status Indicators
@@ -64,25 +73,38 @@ Send any message to the analyzer node to trigger an immediate scan of all functi
 
 ## Example Function Node Issues
 
-The analyzer will flag these patterns:
-
+### Level 1 Examples
 ```javascript
-// Standalone return (early exit)
+// Top-level return (critical issue)
+return;  // ← This will be flagged
+
+// This is NOT flagged (inside a block)
 if (someCondition) {
-    return;  // ← This will be flagged
+    return;  // ← This will NOT be flagged
 }
+```
 
-// Console output
-console.log("Debug message");  // ← This will be flagged
+### Level 2 Examples
+```javascript
+// Level 1 issues plus:
 
-// TODO comments
+// node.warn() statements
+node.warn("Debug message");  // ← This will be flagged
+
+// TODO/FIXME comments with colon
 // TODO: fix this later  // ← This will be flagged
+// FIXME: broken logic  // ← This will be flagged
+```
 
-// Debugger statements
-debugger;  // ← This will be flagged
+### Level 3 Examples
+```javascript
+// Level 2 issues plus:
 
-// Test values
+// Hardcoded test values
 let testValue = "test";  // ← This will be flagged
+let debugVar = "debug";  // ← This will be flagged
+let tempVar = "temp";    // ← This will be flagged
+let number = 123;        // ← This will be flagged
 ```
 
 ## Advanced Usage
