@@ -1,0 +1,141 @@
+<script type="text/javascript">
+    RED.nodes.registerType('code-analyzer', {
+        category: 'utility',
+        color: '#87CEEB',
+        defaults: {
+            name: {value: ""},
+            scanInterval: {value: 30000, required: true, validate: RED.validators.number()},
+            enabledChecks: {value: ['return', 'console', 'todo', 'debugger']},
+            autoStart: {value: true}
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "debug.png",
+        label: function() {
+            return this.name || "Code Analyzer";
+        },
+        oneditprepare: function() {
+            // Setup checkboxes for enabled checks
+            const checks = ['return', 'console', 'todo', 'debugger', 'hardcoded'];
+            const enabledChecks = this.enabledChecks || ['return', 'console', 'todo', 'debugger'];
+            
+            checks.forEach(check => {
+                const checkbox = document.getElementById('check-' + check);
+                if (checkbox) {
+                    checkbox.checked = enabledChecks.includes(check);
+                }
+            });
+        },
+        oneditsave: function() {
+            // Save enabled checks
+            const enabledChecks = [];
+            const checks = ['return', 'console', 'todo', 'debugger', 'hardcoded'];
+            
+            checks.forEach(check => {
+                const checkbox = document.getElementById('check-' + check);
+                if (checkbox && checkbox.checked) {
+                    enabledChecks.push(check);
+                }
+            });
+            
+            this.enabledChecks = enabledChecks;
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="code-analyzer">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Code Analyzer">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-scanInterval"><i class="fa fa-clock-o"></i> Scan Interval (ms)</label>
+        <input type="number" id="node-input-scanInterval" placeholder="30000">
+        <div class="form-tips">Set to 0 to disable automatic scanning</div>
+    </div>
+    
+    <div class="form-row">
+        <label><i class="fa fa-check-square-o"></i> Enable Checks</label>
+        <div style="margin-left: 120px;">
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="check-return" style="margin-right: 5px;">
+                Standalone return statements
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="check-console" style="margin-right: 5px;">
+                Console.log statements
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="check-todo" style="margin-right: 5px;">
+                TODO/FIXME comments
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="check-debugger" style="margin-right: 5px;">
+                Debugger statements
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="check-hardcoded" style="margin-right: 5px;">
+                Hardcoded test values
+            </label>
+        </div>
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
+        <input type="checkbox" id="node-input-autoStart" checked>
+        <div class="form-tips">Start scanning automatically when deployed</div>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="code-analyzer">
+    <p>A background service that continuously monitors all function nodes across all flows for debugging artifacts.</p>
+    
+    <h3>Features</h3>
+    <ul>
+        <li>Detects standalone return statements</li>
+        <li>Finds console.log statements</li>
+        <li>Identifies TODO/FIXME comments</li>
+        <li>Spots debugger statements</li>
+        <li>Finds hardcoded test values</li>
+    </ul>
+    
+    <h3>Configuration</h3>
+    <dl class="message-properties">
+        <dt>Scan Interval <span class="property-type">number</span></dt>
+        <dd>How often to scan all function nodes (in milliseconds). Set to 0 to disable automatic scanning.</dd>
+        
+        <dt>Enable Checks <span class="property-type">array</span></dt>
+        <dd>Which types of debugging artifacts to detect.</dd>
+        
+        <dt>Auto Start <span class="property-type">boolean</span></dt>
+        <dd>Whether to start scanning automatically when the node is deployed.</dd>
+    </dl>
+    
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>Any message sent to this node will trigger a manual scan of all function nodes.</dd>
+    </dl>
+    
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Contains scan completion information with timestamp.</dd>
+    </dl>
+    
+    <h3>Status Indicators</h3>
+    <p>The analyzer node shows:</p>
+    <ul>
+        <li><strong>Green:</strong> No debugging traits found</li>
+        <li><strong>Yellow:</strong> Found debugging traits (shows count)</li>
+    </ul>
+    
+    <p>Function nodes with issues show:</p>
+    <ul>
+        <li><strong>Red dot:</strong> "debugging traits noticed"</li>
+    </ul>
+    
+    <h3>Usage</h3>
+    <p>Simply add this node to any flow and it will automatically scan all function nodes in your Node-RED instance. Function nodes with debugging artifacts will show a red status indicator.</p>
+</script>
