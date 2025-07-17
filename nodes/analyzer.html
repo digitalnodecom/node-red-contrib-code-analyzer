@@ -27,6 +27,23 @@
 <script type="text/javascript">
     // Global event listener for function node opening - runs when Node-RED editor loads
     $(document).ready(function() {
+        // Add CSS for highlighting problematic lines
+        if (!document.getElementById('debug-analyzer-styles')) {
+            const style = document.createElement('style');
+            style.id = 'debug-analyzer-styles';
+            style.textContent = `
+                .highlighted-line {
+                    background-color: rgba(255, 193, 7, 0.2) !important;
+                    border-left: 3px solid #ffc107 !important;
+                }
+                .highlighted-line-error {
+                    background-color: rgba(220, 53, 69, 0.2) !important;
+                    border-left: 3px solid #dc3545 !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
         // Browser version of detection function
         function detectDebuggingTraitsInBrowser(code, level = 1) {
             const issues = [];
@@ -206,6 +223,40 @@
                                         severity: error.severity
                                     });
                                 });
+                                
+                                // Add Monaco editor markers and highlights
+                                setTimeout(() => {
+                                    monaco.editor.getEditors().forEach(editorInstance => {
+                                        // Convert errors to Monaco markers
+                                        const markers = errors.map(error => ({
+                                            startLineNumber: error.line,
+                                            startColumn: error.column,
+                                            endLineNumber: error.line,
+                                            endColumn: error.endColumn,
+                                            message: error.message,
+                                            severity: error.severity === 'warning' ? 
+                                                monaco.MarkerSeverity.Warning : 
+                                                monaco.MarkerSeverity.Info,
+                                            source: 'Debug Analyzer'
+                                        }));
+                                        
+                                        // Add markers for problems panel
+                                        monaco.editor.setModelMarkers(editorInstance.getModel(), 'debug-checker', markers);
+                                        
+                                        // Add visual highlight decorations
+                                        const decorations = errors.map(error => ({
+                                            range: new monaco.Range(error.line, 1, error.line, 1),
+                                            options: {
+                                                isWholeLine: true,
+                                                className: error.severity === 'warning' ? 
+                                                    'highlighted-line-error' : 
+                                                    'highlighted-line'
+                                            }
+                                        }));
+                                        
+                                        editorInstance.deltaDecorations([], decorations);
+                                    });
+                                }, 100);
                             } else {
                                 console.log('No debug issues found for this function node');
                             }
