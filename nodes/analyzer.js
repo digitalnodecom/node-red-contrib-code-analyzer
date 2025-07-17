@@ -7,7 +7,7 @@ module.exports = function(RED) {
         
         // Configuration
         node.scanInterval = config.scanInterval || 30000; // 30 seconds default
-        node.enabledChecks = config.enabledChecks || ['return', 'console', 'todo', 'debugger'];
+        node.detectionLevel = config.detectionLevel || 1; // Level 1 default
         
         let scanTimer;
         
@@ -18,7 +18,7 @@ module.exports = function(RED) {
             RED.nodes.eachNode(function (nodeConfig) {
                 node.warn(nodeConfig);
                 if (nodeConfig.type === 'function' && nodeConfig.func) {
-                    const issues = detectDebuggingTraits(nodeConfig.func);
+                    const issues = detectDebuggingTraits(nodeConfig.func, node.detectionLevel);
                     
                     if (issues.length > 0) {
                         totalIssues += issues.length;

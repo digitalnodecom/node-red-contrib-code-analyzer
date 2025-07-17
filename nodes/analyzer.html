@@ -5,7 +5,7 @@
         defaults: {
             name: {value: ""},
             scanInterval: {value: 30000, required: true, validate: RED.validators.number()},
-            enabledChecks: {value: ['return', 'console', 'todo', 'debugger']},
+            detectionLevel: {value: 1, required: true, validate: RED.validators.number()},
             autoStart: {value: true}
         },
         inputs: 1,
@@ -15,30 +15,10 @@
             return this.name || "Code Analyzer";
         },
         oneditprepare: function() {
-            // Setup checkboxes for enabled checks
-            const checks = ['return', 'console', 'todo', 'debugger', 'hardcoded'];
-            const enabledChecks = this.enabledChecks || ['return', 'console', 'todo', 'debugger'];
-            
-            checks.forEach(check => {
-                const checkbox = document.getElementById('check-' + check);
-                if (checkbox) {
-                    checkbox.checked = enabledChecks.includes(check);
-                }
-            });
+            // No special preparation needed for detection level
         },
         oneditsave: function() {
-            // Save enabled checks
-            const enabledChecks = [];
-            const checks = ['return', 'console', 'todo', 'debugger', 'hardcoded'];
-            
-            checks.forEach(check => {
-                const checkbox = document.getElementById('check-' + check);
-                if (checkbox && checkbox.checked) {
-                    enabledChecks.push(check);
-                }
-            });
-            
-            this.enabledChecks = enabledChecks;
+            // No special save handling needed for detection level
         }
     });
 </script>
@@ -56,29 +36,13 @@
     </div>
     
     <div class="form-row">
-        <label><i class="fa fa-check-square-o"></i> Enable Checks</label>
-        <div style="margin-left: 120px;">
-            <label style="display: block; margin-bottom: 5px;">
-                <input type="checkbox" id="check-return" style="margin-right: 5px;">
-                Standalone return statements
-            </label>
-            <label style="display: block; margin-bottom: 5px;">
-                <input type="checkbox" id="check-console" style="margin-right: 5px;">
-                Console.log statements
-            </label>
-            <label style="display: block; margin-bottom: 5px;">
-                <input type="checkbox" id="check-todo" style="margin-right: 5px;">
-                TODO/FIXME comments
-            </label>
-            <label style="display: block; margin-bottom: 5px;">
-                <input type="checkbox" id="check-debugger" style="margin-right: 5px;">
-                Debugger statements
-            </label>
-            <label style="display: block; margin-bottom: 5px;">
-                <input type="checkbox" id="check-hardcoded" style="margin-right: 5px;">
-                Hardcoded test values
-            </label>
-        </div>
+        <label for="node-input-detectionLevel"><i class="fa fa-level-up"></i> Detection Level</label>
+        <select id="node-input-detectionLevel">
+            <option value="1">Level 1: Critical top-level return statements</option>
+            <option value="2">Level 2: Level 1 + node.warn() + TODO/FIXME comments</option>
+            <option value="3">Level 3: Level 2 + hardcoded variables</option>
+        </select>
+        <div class="form-tips">Choose the level of debugging detection strictness</div>
     </div>
     
     <div class="form-row">
@@ -91,13 +55,11 @@
 <script type="text/html" data-help-name="code-analyzer">
     <p>A background service that continuously monitors all function nodes across all flows for debugging artifacts.</p>
     
-    <h3>Features</h3>
+    <h3>Detection Levels</h3>
     <ul>
-        <li>Detects standalone return statements</li>
-        <li>Finds console.log statements</li>
-        <li>Identifies TODO/FIXME comments</li>
-        <li>Spots debugger statements</li>
-        <li>Finds hardcoded test values</li>
+        <li><strong>Level 1:</strong> Critical top-level return statements</li>
+        <li><strong>Level 2:</strong> Level 1 + node.warn() + TODO/FIXME comments</li>
+        <li><strong>Level 3:</strong> Level 2 + hardcoded variables</li>
     </ul>
     
     <h3>Configuration</h3>
@@ -105,8 +67,8 @@
         <dt>Scan Interval <span class="property-type">number</span></dt>
         <dd>How often to scan all function nodes (in milliseconds). Set to 0 to disable automatic scanning.</dd>
         
-        <dt>Enable Checks <span class="property-type">array</span></dt>
-        <dd>Which types of debugging artifacts to detect.</dd>
+        <dt>Detection Level <span class="property-type">number</span></dt>
+        <dd>Choose the level of debugging detection strictness (1, 2, or 3).</dd>
         
         <dt>Auto Start <span class="property-type">boolean</span></dt>
         <dd>Whether to start scanning automatically when the node is deployed.</dd>
