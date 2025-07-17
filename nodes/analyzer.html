@@ -15,19 +15,15 @@
             return this.name || "Code Analyzer";
         },
         oneditprepare: function() {
-            // No special preparation needed for detection level
         },
         oneditsave: function() {
-            // No special save handling needed for detection level
         },
     });
     
 </script>
 
 <script type="text/javascript">
-    // Global event listener for function node opening - runs when Node-RED editor loads
     $(document).ready(function() {
-        // Add CSS for highlighting problematic lines
         if (!document.getElementById('debug-analyzer-styles')) {
             const style = document.createElement('style');
             style.id = 'debug-analyzer-styles';
@@ -44,25 +40,20 @@
             document.head.appendChild(style);
         }
         
-        // Browser version of detection function
         function detectDebuggingTraitsInBrowser(code, level = 1) {
             const issues = [];
             const lines = code.split('\n');
             
-            // Level 1: Critical top-level return statements
             if (level >= 1) {
-                // Detect true top-level return statements (not inside blocks)
                 let braceDepth = 0;
                 
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const trimmed = line.trim();
                     
-                    // Track brace depth to determine if we're at top level
                     const openBraces = (line.match(/\{/g) || []).length;
                     const closeBraces = (line.match(/\}/g) || []).length;
                     
-                    // Check for top-level return before updating brace depth
                     if (braceDepth === 0 && /^\s*return\s*;?\s*$/.test(trimmed)) {
                         issues.push({
                             type: "top-level-return",
@@ -78,9 +69,7 @@
                 }
             }
             
-            // Level 2: Level 1 + node.warn() + TODO/FIXME comments
             if (level >= 2) {
-                // Detect node.warn() statements
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const warnMatch = line.match(/node\.warn\s*\(/);
@@ -96,7 +85,6 @@
                     }
                 }
                 
-                // Detect TODO/FIXME comments
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const todoMatch = line.match(/(TODO|FIXME):/i);
@@ -113,9 +101,7 @@
                 }
             }
             
-            // Level 3: Level 2 + hardcoded variables
             if (level >= 3) {
-                // Detect hardcoded test values
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const testMatch = line.match(/=\s*["']test["']/);
@@ -172,62 +158,35 @@
             return issues;
         }
         
-        // Hook into the code editor creation/opening
         if (RED.editor.codeEditor) {
             const originalCreateEditor = RED.editor.codeEditor.create;
             if (originalCreateEditor) {
                 RED.editor.codeEditor.create = function(options) {
                     const editor = originalCreateEditor.apply(this, arguments);
                     
-                    // Check if this is for a function node main editor
                     if (options && options.id === 'node-input-func-editor') {                        
-                        // Extract node ID from stateId
                         let nodeId = null;
                         if (options.stateId) {
                             nodeId = options.stateId.split('/')[0];
                         }
                         
-                        // Get the current node using the extracted ID
                         const currentNode = nodeId ? RED.nodes.node(nodeId) : null;
-                        console.log('Current node:', currentNode);
-                        console.log('Current editor:', editor);
-                        console.log('Editor options:', options);
-                        
+
                         if (currentNode && currentNode.type === 'function') {
-                            // Get the detection level from the analyzer node in the same flow
-                            let detectionLevel = 1; // default
+                            let detectionLevel = 1;
                             RED.nodes.eachNode(function(node) {
                                 if (node.type === 'code-analyzer' && node.z === currentNode.z) {
                                     detectionLevel = node.detectionLevel || 1;
                                 }
                             });
-                            
-                            console.log('Detection level for this flow:', detectionLevel);
-                            
-                            // Get the current code from the editor and re-scan for issues
+                                                        
                             const currentCode = options.value || '';
-                            console.log('Current code in editor:', currentCode);
                             
-                            // Re-run detection logic on current code
                             const errors = detectDebuggingTraitsInBrowser(currentCode, detectionLevel);
                             
                             if (errors.length > 0) {
-                                console.log('Errors found for currently opened function node:');
-                                console.log('Total errors:', errors.length);
-                                
-                                errors.forEach((error, index) => {
-                                    console.log(`Error ${index + 1}:`, {
-                                        message: error.message,
-                                        line: error.line,
-                                        type: error.type,
-                                        severity: error.severity
-                                    });
-                                });
-                                
-                                // Add Monaco editor markers and highlights
                                 setTimeout(() => {
                                     monaco.editor.getEditors().forEach(editorInstance => {
-                                        // Convert errors to Monaco markers
                                         const markers = errors.map(error => ({
                                             startLineNumber: error.line,
                                             startColumn: error.column,
@@ -240,10 +199,8 @@
                                             source: 'Debug Analyzer'
                                         }));
                                         
-                                        // Add markers for problems panel
                                         monaco.editor.setModelMarkers(editorInstance.getModel(), 'debug-checker', markers);
                                         
-                                        // Add visual highlight decorations
                                         const decorations = errors.map(error => ({
                                             range: new monaco.Range(error.line, 1, error.line, 1),
                                             options: {
@@ -257,8 +214,6 @@
                                         editorInstance.deltaDecorations([], decorations);
                                     });
                                 }, 100);
-                            } else {
-                                console.log('No debug issues found for this function node');
                             }
                         }
                     }
@@ -285,9 +240,9 @@
     <div class="form-row">
         <label for="node-input-detectionLevel"><i class="fa fa-level-up"></i> Detection Level</label>
         <select id="node-input-detectionLevel">
-            <option value="1">Level 1: Critical top-level return statements</option>
-            <option value="2">Level 2: Level 1 + node.warn() + TODO/FIXME comments</option>
-            <option value="3">Level 3: Level 2 + hardcoded variables</option>
+            <option value="1">Level 1</option>
+            <option value="2">Level 2</option>
+            <option value="3">Level 3</option>
         </select>
         <div class="form-tips">Choose the level of debugging detection strictness</div>
     </div>

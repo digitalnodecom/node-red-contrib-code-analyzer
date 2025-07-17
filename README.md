@@ -107,18 +107,6 @@ let tempVar = "temp";    // ← This will be flagged
 let number = 123;        // ← This will be flagged
 ```
 
-## Advanced Usage
-
-### Programmatic Control
-```javascript
-// Trigger manual scan
-msg.payload = { action: "scan" };
-return msg;
-```
-
-### Integration with CI/CD
-The analyzer can be used to prevent deployment of flows with debugging code by monitoring the output messages.
-
 ## Troubleshooting
 
 - **No status updates**: Ensure the analyzer node is properly deployed and started
