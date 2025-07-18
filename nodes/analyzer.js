@@ -21,7 +21,7 @@ module.exports = function(RED) {
         
         // Track pending alerts for grouped queue messages
         node.pendingQueueAlerts = {};
-        node.lastQueueMessageTime = 0;
+        node.lastQueueMessageTimes = {}; // Per-queue timing
         
         // Track code analysis issues for grouped messages
         node.lastCodeAnalysisMessageTime = 0;
@@ -154,13 +154,20 @@ module.exports = function(RED) {
                                     };
                                 }
                                 
-                                // Send grouped queue message if frequency interval has passed
-                                if (now - node.lastQueueMessageTime >= node.queueMessageFrequency) {
-                                    if (Object.keys(node.pendingQueueAlerts).length > 0) {
-                                        slackNotifier.sendQueueAlert(node.pendingQueueAlerts, (msg) => node.warn(msg));
-                                        node.pendingQueueAlerts = {}; // Clear pending alerts
-                                        node.lastQueueMessageTime = now;
-                                    }
+                                // Check if this specific queue can send a message
+                                const lastQueueMessageTime = node.lastQueueMessageTimes[nodeConfig.id] || 0;
+                                if (now - lastQueueMessageTime >= node.queueMessageFrequency) {
+                                    // Send individual queue alert for this specific queue
+                                    const singleQueueAlert = {};
+                                    singleQueueAlert[nodeConfig.id] = node.pendingQueueAlerts[nodeConfig.id];
+                                    
+                                    slackNotifier.sendQueueAlert(singleQueueAlert, (msg) => node.warn(msg));
+                                    
+                                    // Update timing for this specific queue
+                                    node.lastQueueMessageTimes[nodeConfig.id] = now;
+                                    
+                                    // Remove this queue from pending alerts
+                                    delete node.pendingQueueAlerts[nodeConfig.id];
                                 }
                             }
                         }
