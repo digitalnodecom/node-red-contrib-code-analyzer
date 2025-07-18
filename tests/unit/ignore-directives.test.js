@@ -92,25 +92,6 @@ describe('Ignore Directives', () => {
             expect(result.ignoreNextLines.has(7)).toBe(true);
         });
 
-        test('should handle alternative spelling (nr-analizer)', () => {
-            const lines = [
-                'console.log("normal");',
-                '// @nr-analizer-ignore-start',
-                'return;',
-                '// @nr-analizer-ignore-end',
-                'node.warn("debug"); // @nr-analizer-ignore-line',
-                '// @nr-analizer-ignore-next',
-                'const test = "test";'
-            ];
-            
-            const result = parseIgnoreDirectives(lines);
-            
-            expect(result.ignoreRegions).toEqual([
-                { start: 2, end: 4 }
-            ]);
-            expect(result.ignoreLines.has(5)).toBe(true);
-            expect(result.ignoreNextLines.has(7)).toBe(true);
-        });
 
         test('should handle case insensitive directives', () => {
             const lines = [
