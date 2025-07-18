@@ -56,9 +56,9 @@ describe('PerformanceMonitor', () => {
     describe('Constructor', () => {
         it('should initialize with default configuration', () => {
             expect(performanceMonitor.config).toEqual({
-                cpuThreshold: 80,
-                memoryThreshold: 85,
-                eventLoopThreshold: 100,
+                cpuThreshold: 75,
+                memoryThreshold: 80,
+                eventLoopThreshold: 20,
                 sustainedAlertDuration: 300000,
                 alertCooldown: 1800000,
                 dbRetentionDays: 7,
@@ -150,7 +150,7 @@ describe('PerformanceMonitor', () => {
             
             await performanceMonitor.checkSustainedThresholds(metrics);
             
-            expect(performanceMonitor.db.checkSustainedMetric).toHaveBeenCalledWith('cpu_usage', 80, 300000);
+            expect(performanceMonitor.db.checkSustainedMetric).toHaveBeenCalledWith('cpu_usage', 75, 300000);
         });
 
         it('should call database methods for memory threshold checking', async () => {
@@ -165,7 +165,7 @@ describe('PerformanceMonitor', () => {
             
             await performanceMonitor.checkSustainedThresholds(metrics);
             
-            expect(performanceMonitor.db.checkSustainedMetric).toHaveBeenCalledWith('memory_usage', 85, 300000);
+            expect(performanceMonitor.db.checkSustainedMetric).toHaveBeenCalledWith('memory_usage', 80, 300000);
         });
 
         it('should respect alert cooldown periods', async () => {
@@ -232,8 +232,8 @@ describe('PerformanceMonitor', () => {
             performanceMonitor.updateConfig(partialConfig);
             
             expect(performanceMonitor.config.cpuThreshold).toBe(90);
-            expect(performanceMonitor.config.memoryThreshold).toBe(85);
-            expect(performanceMonitor.config.eventLoopThreshold).toBe(100);
+            expect(performanceMonitor.config.memoryThreshold).toBe(80);
+            expect(performanceMonitor.config.eventLoopThreshold).toBe(20);
         });
     });
 
