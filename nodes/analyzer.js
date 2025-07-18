@@ -101,6 +101,10 @@ module.exports = function(RED) {
             }
         });
         
+        RED.events.on('nodes-started', function() {
+            scanCurrentFlow();
+        });
+        
         setTimeout(startScanning, 1000);
     }
     
