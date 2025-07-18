@@ -26,12 +26,10 @@ describe('Integration Tests - Code Analyzer End-to-End', () => {
         
         test('should detect issues and send appropriate Slack notifications', async () => {
             // Arrange
-            const problematicCode = `function processData(msg) {
-    return; // Level 1 issue
-    node.warn("debugging"); // Level 2 issue
-    const mode = "test"; // Level 3 issue
-    // TODO: optimize this // Level 2 issue
-}`;
+            const problematicCode = `return; // Level 1 issue
+node.warn("debugging"); // Level 2 issue
+const mode = "test"; // Level 3 issue
+// TODO: optimize this // Level 2 issue`;
             
             const queueAlerts = {
                 'queue1': { queueName: 'TestQueue1', flowName: 'TestFlow1', queueLength: 11 },
@@ -119,11 +117,9 @@ function processMessage(msg) {
         
         test('should handle different detection levels correctly', async () => {
             // Arrange
-            const multiLevelCode = `function test() {
-    return; // Level 1
-    node.warn("debug"); // Level 2
-    const mode = "test"; // Level 3
-}`;
+            const multiLevelCode = `return; // Level 1
+node.warn("debug"); // Level 2
+const mode = "test"; // Level 3`;
             
             // Act & Assert - Level 1 only
             const level1Issues = detectDebuggingTraits(multiLevelCode, 1);
