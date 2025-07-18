@@ -9,6 +9,7 @@ A comprehensive Node-RED package that provides background services to detect deb
 
 - **🔍 Static Code Analysis**: Detects debugging artifacts in function nodes
 - **📊 Queue Monitoring**: Monitors delay node queues and sends alerts
+- **⚡ Performance Monitoring**: Tracks CPU, memory, and event loop metrics with sustained alerting
 - **🔔 Slack Integration**: Sends formatted alerts to Slack channels
 - **📈 Real-time Monitoring**: Continuous background scanning
 - **🎯 Configurable Detection**: Multiple detection levels and thresholds
@@ -31,6 +32,31 @@ Includes Level 1 plus:
 Includes Level 2 plus:
 - **Hardcoded test values**: Common test patterns like `= "test"`, `= "debug"`, `= "temp"`, `= 123`
 - **Multiple empty lines**: 2 or more consecutive empty lines
+
+## Performance Monitoring
+
+The performance monitoring feature continuously tracks your Node-RED instance's system metrics and provides intelligent alerting based on sustained threshold violations. Unlike traditional monitoring that alerts on momentary spikes, this system only triggers alerts when metrics remain above thresholds for a configured duration (e.g., CPU above 75% for 5+ minutes), preventing false alarms from temporary load spikes. All metrics are stored in a local SQLite database with automatic data retention management, and alerts include average values over the sustained period rather than instantaneous readings for more accurate performance insights.
+
+### Performance Monitoring Configuration
+
+| Field | Description | Recommended Value |
+|-------|-------------|------------------|
+| **Performance Monitoring** | Enable/disable system performance tracking | `Enabled` for production systems |
+| **Performance Check Interval** | How often to collect metrics (seconds) | `10-30 seconds` |
+| **CPU Threshold** | CPU usage percentage that triggers alerts | `70-80%` |
+| **Memory Threshold** | Memory usage percentage that triggers alerts | `75-85%` |
+| **Event Loop Lag Threshold** | Event loop delay in milliseconds | `10-50ms` |
+| **Sustained Alert Duration** | Time metrics must exceed thresholds before alerting | `300 seconds (5 minutes)` |
+| **Alert Cooldown** | Wait time between repeated alerts for same issue | `1800 seconds (30 minutes)` |
+| **Database Retention** | Days to keep performance metrics in database | `7 days` |
+
+### How It Works
+
+1. **Continuous Monitoring**: Collects CPU, memory, and event loop metrics at regular intervals
+2. **Sustained Analysis**: Only alerts when metrics exceed thresholds for the configured duration
+3. **Smart Alerting**: Prevents notification spam with configurable cooldown periods
+4. **Data Storage**: Uses SQLite database for historical data and trend analysis
+5. **Automatic Cleanup**: Prunes old data based on retention settings
 
 ## Installation
 
@@ -129,12 +155,26 @@ GitHub Actions automatically runs:
 - **Level 2**: Important issues (node.warn, TODO comments)
 - **Level 3**: Minor issues (hardcoded values, formatting)
 
+### Code Analysis
+
+- **Detection Levels**: Choose between 3 levels of strictness
+- **Scan Interval**: Configurable automatic scanning frequency
+- **Auto Start**: Automatically begin scanning on deployment
+- **Monaco Integration**: Real-time editor highlighting and markers
+
 ### Queue Monitoring
 
 - **Scan Interval**: Fixed at 3 seconds for optimal performance
 - **Message Frequency**: Configurable notification throttling
 - **Queue Selection**: Monitor all queues or specific selections
 - **Threshold Settings**: Customizable queue length alerts
+
+### Performance Monitoring
+
+- **Sustained Alerting**: Only alerts on prolonged threshold violations
+- **SQLite Storage**: Local database for metrics history and trends
+- **Configurable Thresholds**: Set CPU, memory, and event loop limits
+- **Automatic Cleanup**: Intelligent data retention management
 
 ### Slack Integration
 
