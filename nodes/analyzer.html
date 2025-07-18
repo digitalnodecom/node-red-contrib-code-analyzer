@@ -6,7 +6,11 @@
             name: {value: ""},
             scanInterval: {value: 30000, required: true, validate: RED.validators.number()},
             detectionLevel: {value: 1, required: true, validate: RED.validators.number()},
-            autoStart: {value: true}
+            autoStart: {value: true},
+            queueScanning: {value: false},
+            queueScanInterval: {value: 30000, required: true, validate: RED.validators.number()},
+            queueScanMode: {value: "all"},
+            selectedQueueId: {value: ""}
         },
         inputs: 1,
         outputs: 0,
@@ -15,6 +19,45 @@
             return this.name || "Code Analyzer";
         },
         oneditprepare: function() {
+            const queueScanningCheckbox = $('#node-input-queueScanning');
+            const queueScanModeSelect = $('#node-input-queueScanMode');
+            const selectedQueueRow = $('.form-row-selectedQueue');
+            
+            function updateQueueVisibility() {
+                const isQueueScanningEnabled = queueScanningCheckbox.prop('checked');
+                $('.form-row-queueInterval').toggle(isQueueScanningEnabled);
+                $('.form-row-queueMode').toggle(isQueueScanningEnabled);
+                
+                if (isQueueScanningEnabled) {
+                    const isSpecificQueue = queueScanModeSelect.val() === 'specific';
+                    selectedQueueRow.toggle(isSpecificQueue);
+                    
+                    if (isSpecificQueue) {
+                        // Populate queue dropdown
+                        const queueSelect = $('#node-input-selectedQueueId');
+                        queueSelect.empty();
+                        queueSelect.append('<option value="">Select a queue...</option>');
+                        
+                        // Get current flow ID
+                        const currentFlowId = RED.workspaces.active();
+                        
+                        RED.nodes.eachNode(function(node) {
+                            if (node.type === 'delay' && node.pauseType === 'rate' && node.z === currentFlowId) {
+                                const label = node.name || `Delay Node (${node.id.substring(0, 8)})`;
+                                queueSelect.append(`<option value="${node.id}">${label}</option>`);
+                            }
+                        });
+                    }
+                } else {
+                    selectedQueueRow.hide();
+                }
+            }
+            
+            queueScanningCheckbox.on('change', updateQueueVisibility);
+            queueScanModeSelect.on('change', updateQueueVisibility);
+            
+            // Initial visibility setup
+            updateQueueVisibility();
         },
         oneditsave: function() {
         },
@@ -290,6 +333,35 @@
         <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
         <input type="checkbox" id="node-input-autoStart" checked>
         <div class="form-tips">Start scanning automatically when deployed</div>
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-queueScanning"><i class="fa fa-list"></i> Queue Scanning</label>
+        <input type="checkbox" id="node-input-queueScanning">
+        <div class="form-tips">Enable monitoring of delay node queues</div>
+    </div>
+    
+    <div class="form-row form-row-queueInterval" style="display: none;">
+        <label for="node-input-queueScanInterval"><i class="fa fa-clock-o"></i> Queue Scan Interval (ms)</label>
+        <input type="number" id="node-input-queueScanInterval" placeholder="30000">
+        <div class="form-tips">How often to check queue status</div>
+    </div>
+    
+    <div class="form-row form-row-queueMode" style="display: none;">
+        <label for="node-input-queueScanMode"><i class="fa fa-filter"></i> Queue Scan Mode</label>
+        <select id="node-input-queueScanMode">
+            <option value="all">All Queues</option>
+            <option value="specific">Specific Queue</option>
+        </select>
+        <div class="form-tips">Choose to monitor all queues or a specific one</div>
+    </div>
+    
+    <div class="form-row form-row-selectedQueue" style="display: none;">
+        <label for="node-input-selectedQueueId"><i class="fa fa-crosshairs"></i> Select Queue</label>
+        <select id="node-input-selectedQueueId">
+            <option value="">Select a queue...</option>
+        </select>
+        <div class="form-tips">Choose which specific queue to monitor</div>
     </div>
 </script>
 

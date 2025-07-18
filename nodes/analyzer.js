@@ -7,6 +7,10 @@ module.exports = function(RED) {
         
         node.scanInterval = config.scanInterval || 30000;
         node.detectionLevel = config.detectionLevel || 1;
+        node.queueScanning = config.queueScanning || false;
+        node.queueScanInterval = config.queueScanInterval || 30000;
+        node.queueScanMode = config.queueScanMode || "all";
+        node.selectedQueueId = config.selectedQueueId || "";
         
         let scanTimer;
         let queueMonitorTimer;
@@ -82,19 +86,28 @@ module.exports = function(RED) {
         }
         
         function monitorQueues() {
+            if (!node.queueScanning) return;
+            
+            const currentFlowId = node.z;
+            
             RED.nodes.eachNode(function (nodeConfig) {
-                if (
-                    nodeConfig.type === 'delay' &&
-                    nodeConfig.pauseType == "rate" &&
-                    nodeConfig.id == 'dd2eca35aae89faa'
-                ) {
-                    const delayNode = RED.nodes.getNode(nodeConfig.id);
+                if (nodeConfig.type === 'delay' && nodeConfig.pauseType == "rate" && nodeConfig.z === currentFlowId) {
+                    // Check if we should monitor this specific queue
+                    const shouldMonitor = node.queueScanMode === "all" || 
+                                        (node.queueScanMode === "specific" && nodeConfig.id === node.selectedQueueId);
                     
-                    const queueLength = delayNode?.buffer.length;
-                    const droppedCount = delayNode.droppedMsgs;
-                    const isDropping = delayNode.drop;
+                    if (shouldMonitor) {
+                        const delayNode = RED.nodes.getNode(nodeConfig.id);
+                        
+                        if (delayNode) {
+                            const queueLength = delayNode?.buffer.length;
+                            const droppedCount = delayNode.droppedMsgs;
+                            const isDropping = delayNode.drop;
 
-                    node.warn(queueLength)
+                            if ( queueLength > 0 )
+                                node.warn(queueLength)
+                        }
+                    }
                 }
             });
         }
@@ -106,8 +119,10 @@ module.exports = function(RED) {
                 scanTimer = setInterval(scanCurrentFlow, node.scanInterval);
             }
             
-            // Start queue monitoring every 3 seconds
-            queueMonitorTimer = setInterval(monitorQueues, 3000);
+            // Start queue monitoring if enabled
+            if (node.queueScanning) {
+                queueMonitorTimer = setInterval(monitorQueues, node.queueScanInterval);
+            }
         }
         
         node.on('input', function(msg) {
