@@ -21,9 +21,9 @@ module.exports = function(RED) {
         node.performanceMonitoring = config.performanceMonitoring || false;
         node.performanceInterval = Math.max((config.performanceInterval || 10) * 1000, 1000); // Convert seconds to milliseconds, min 1 second
         node.performanceThresholds = {
-            cpuThreshold: config.cpuThreshold || 80,
-            memoryThreshold: config.memoryThreshold || 85,
-            eventLoopThreshold: config.eventLoopThreshold || 100,
+            cpuThreshold: config.cpuThreshold || 75,
+            memoryThreshold: config.memoryThreshold || 80,
+            eventLoopThreshold: config.eventLoopThreshold || 20,
             sustainedAlertDuration: Math.max((config.sustainedAlertDuration || 300) * 1000, 60000), // Convert seconds to milliseconds, min 1 minute
             alertCooldown: Math.max((config.alertCooldown || 1800) * 1000, 300000), // Convert seconds to milliseconds, min 5 minutes
             dbRetentionDays: Math.max(Math.min(config.dbRetentionDays || 7, 30), 1) // Between 1-30 days

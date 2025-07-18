@@ -15,9 +15,9 @@
             slackWebhookUrl: {value: ""},
             performanceMonitoring: {value: false},
             performanceInterval: {value: 10, required: true, validate: RED.validators.number()},
-            cpuThreshold: {value: 80, required: true, validate: RED.validators.number()},
-            memoryThreshold: {value: 85, required: true, validate: RED.validators.number()},
-            eventLoopThreshold: {value: 100, required: true, validate: RED.validators.number()},
+            cpuThreshold: {value: 75, required: true, validate: RED.validators.number()},
+            memoryThreshold: {value: 80, required: true, validate: RED.validators.number()},
+            eventLoopThreshold: {value: 20, required: true, validate: RED.validators.number()},
             sustainedAlertDuration: {value: 300, required: true, validate: RED.validators.number()},
             alertCooldown: {value: 1800, required: true, validate: RED.validators.number()},
             dbRetentionDays: {value: 7, required: true, validate: RED.validators.number()}
@@ -566,38 +566,38 @@
             <div class="form-row-stacked form-row-performanceInterval" style="display: none;">
                 <label for="node-input-performanceInterval"><i class="fa fa-clock-o"></i> Performance Check Interval (seconds)</label>
                 <input type="number" id="node-input-performanceInterval" placeholder="10" min="1">
-                <div class="form-tips">How often to check performance metrics (minimum 1 second)</div>
+                <div class="form-tips">How often to check performance metrics (recommended: 5-30s, minimum 1 second)</div>
             </div>
             
             <div class="form-row-grouped form-row-performanceThreshold" style="display: none;">
                 <div class="form-col">
                     <label for="node-input-cpuThreshold"><i class="fa fa-microchip"></i> CPU Threshold (%)</label>
-                    <input type="number" id="node-input-cpuThreshold" placeholder="80" min="1" max="100">
-                    <div class="form-tips">Alert when CPU usage exceeds this percentage</div>
+                    <input type="number" id="node-input-cpuThreshold" placeholder="75" min="1" max="100">
+                    <div class="form-tips">Alert when CPU usage exceeds this percentage (recommended: 70-80%)</div>
                 </div>
                 <div class="form-col">
                     <label for="node-input-memoryThreshold"><i class="fa fa-memory"></i> Memory Threshold (%)</label>
-                    <input type="number" id="node-input-memoryThreshold" placeholder="85" min="1" max="100">
-                    <div class="form-tips">Alert when memory usage exceeds this percentage</div>
+                    <input type="number" id="node-input-memoryThreshold" placeholder="80" min="1" max="100">
+                    <div class="form-tips">Alert when memory usage exceeds this percentage (recommended: 75-85%)</div>
                 </div>
             </div>
             
             <div class="form-row-stacked form-row-performanceThreshold" style="display: none;">
                 <label for="node-input-eventLoopThreshold"><i class="fa fa-refresh"></i> Event Loop Lag Threshold (ms)</label>
-                <input type="number" id="node-input-eventLoopThreshold" placeholder="100" min="1">
-                <div class="form-tips">Alert when event loop lag exceeds this value in milliseconds</div>
+                <input type="number" id="node-input-eventLoopThreshold" placeholder="20" min="1">
+                <div class="form-tips">Alert when event loop lag exceeds this value in milliseconds (recommended: 10-50ms)</div>
             </div>
             
             <div class="form-row-grouped form-row-performanceThreshold" style="display: none;">
                 <div class="form-col">
                     <label for="node-input-sustainedAlertDuration"><i class="fa fa-clock-o"></i> Sustained Alert Duration (seconds)</label>
                     <input type="number" id="node-input-sustainedAlertDuration" placeholder="300" min="60">
-                    <div class="form-tips">Alert only after threshold exceeded for this duration (minimum 60 seconds)</div>
+                    <div class="form-tips">Alert only after threshold exceeded for this duration (recommended: 300s = 5 minutes, minimum 60 seconds)</div>
                 </div>
                 <div class="form-col">
                     <label for="node-input-alertCooldown"><i class="fa fa-pause"></i> Alert Cooldown (seconds)</label>
                     <input type="number" id="node-input-alertCooldown" placeholder="1800" min="300">
-                    <div class="form-tips">Wait this long between repeated alerts (minimum 300 seconds = 5 minutes)</div>
+                    <div class="form-tips">Wait this long between repeated alerts (recommended: 1800s = 30 minutes, minimum 300 seconds = 5 minutes)</div>
                 </div>
             </div>
             
@@ -643,10 +643,10 @@
         <dd>Enable monitoring of system performance metrics (CPU, memory, event loop lag).</dd>
         
         <dt>Performance Interval <span class="property-type">number</span></dt>
-        <dd>How often to check performance metrics (in seconds, minimum 1 second).</dd>
+        <dd>How often to check performance metrics (in seconds, recommended: 5-30s, minimum 1 second).</dd>
         
         <dt>CPU/Memory/Event Loop Thresholds <span class="property-type">number</span></dt>
-        <dd>Alert thresholds for CPU usage (%), memory usage (%), and event loop lag (ms).</dd>
+        <dd>Alert thresholds for CPU usage (recommended: 70-80%), memory usage (recommended: 75-85%), and event loop lag (recommended: 10-50ms).</dd>
         
         <dt>Database Location <span class="property-type">string</span></dt>
         <dd>Shows the absolute path to the SQLite database file where performance metrics are stored.</dd>
