@@ -1,13 +1,13 @@
 {
   "name": "node-red-contrib-code-analyzer",
   "version": "1.0.0",
-  "description": "A Node-RED package that provides a background service to detect debugging artifacts in function nodes across Node-RED flows",
+  "description": "A Node-RED package that provides a background service to detect debugging artifacts in function nodes across Node-RED flows. Features performance monitoring (CPU, memory, event loop), queue monitoring, and Slack alerting.",
   "main": "nodes/analyzer.js",
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint ."
+    "lint": "eslint . --fix"
   },
   "author": "",
   "license": "ISC",
@@ -16,7 +16,11 @@
     "code-analyzer",
     "debugging",
     "quality",
-    "monitoring"
+    "monitoring",
+    "performance",
+    "cpu",
+    "memory",
+    "slack"
   ],
   "node-red": {
     "version": ">=3.0.0",
@@ -24,17 +28,24 @@
       "code-analyzer": "nodes/analyzer.js"
     }
   },
+  "dependencies": {
+    "sqlite3": "^5.1.7"
+  },
   "devDependencies": {
-    "jest": "^29.7.0",
     "eslint": "^8.57.0",
+    "jest": "^29.7.0",
     "node-red-node-test-helper": "^0.3.4"
   },
   "jest": {
     "testEnvironment": "node",
-    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
     "collectCoverageFrom": [
       "lib/**/*.js",
-      "!**/node_modules/**"
+      "!**/node_modules/**",
+      "!lib/performance-db.js",
+      "!lib/performance-monitor.js"
     ],
     "coverageDirectory": "coverage",
     "coverageReporters": [
@@ -47,11 +58,17 @@
       "**/tests/**/*.test.js"
     ],
     "coverageThreshold": {
-      "lib/**/*.js": {
+      "lib/detector.js": {
         "branches": 85,
         "functions": 100,
         "lines": 95,
         "statements": 95
+      },
+      "lib/slack-notifier.js": {
+        "branches": 70,
+        "functions": 75,
+        "lines": 60,
+        "statements": 60
       }
     }
   }

@@ -168,6 +168,32 @@ describe('Detector - detectDebuggingTraits', () => {
     
     describe('Level 3 Detection - Minor Issues', () => {
         
+        test('should detect multiple consecutive empty lines in middle of code', () => {
+            // Arrange
+            const code = 'var x = 1;\n\n\n\nvar y = 2;';
+            
+            // Act
+            const issues = detectDebuggingTraits(code, 3);
+            
+            // Assert
+            expect(issues).toHaveLength(1);
+            expect(issues[0].type).toBe('multiple-empty-lines');
+            expect(issues[0].message).toContain('3 consecutive empty lines');
+        });
+        
+        test('should detect multiple consecutive empty lines at end of code', () => {
+            // Arrange
+            const code = 'var x = 1;\n\n\n\n';
+            
+            // Act
+            const issues = detectDebuggingTraits(code, 3);
+            
+            // Assert
+            expect(issues).toHaveLength(1);
+            expect(issues[0].type).toBe('multiple-empty-lines');
+            expect(issues[0].message).toContain('4 consecutive empty lines');
+        });
+        
         test('should detect hardcoded test string', () => {
             // Arrange
             const code = sampleCode.hardcodedValues.testString;
