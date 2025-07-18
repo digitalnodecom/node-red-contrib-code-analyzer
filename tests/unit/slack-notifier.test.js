@@ -275,6 +275,7 @@ describe('SlackNotifier', () => {
             // Arrange
             const performanceSummary = {
                 current: { cpu: 85.5, memory: 90.2, eventLoopLag: 15.3 },
+                averages: { cpu: 82.1, memory: 88.7, eventLoop: 12.5 },
                 alerts: [
                     { type: 'cpu', threshold: 75, current: 85.5, sustainedDuration: 300000, severity: 'warning' },
                     { type: 'memory', threshold: 80, current: 90.2, sustainedDuration: 300000, severity: 'warning' }
@@ -322,6 +323,7 @@ describe('SlackNotifier', () => {
             // Arrange
             const performanceSummary = {
                 current: { cpu: 50, memory: 60, eventLoopLag: 150 },
+                averages: { cpu: 48.2, memory: 58.9, eventLoop: 145.3 },
                 alerts: [
                     { type: 'eventLoop', threshold: 100, current: 150, sustainedDuration: 180000, severity: 'info' }
                 ]
