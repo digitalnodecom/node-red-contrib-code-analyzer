@@ -7,6 +7,7 @@
             scanInterval: {value: 30, required: true, validate: RED.validators.number()},
             detectionLevel: {value: 1, required: true, validate: RED.validators.number()},
             autoStart: {value: true},
+            codeAnalysis: {value: true},
             queueScanning: {value: false},
             queueMessageFrequency: {value: 1800, required: true, validate: RED.validators.number()},
             queueScanMode: {value: "all"},
@@ -110,6 +111,20 @@
             
             // Initial visibility setup
             updateQueueVisibility();
+            
+            // Code analysis logic
+            const codeAnalysisCheckbox = $('#node-input-codeAnalysis');
+            const codeAnalysisRows = $('.form-row-codeAnalysis');
+            
+            function updateCodeAnalysisVisibility() {
+                const isCodeAnalysisEnabled = codeAnalysisCheckbox.prop('checked');
+                codeAnalysisRows.toggle(isCodeAnalysisEnabled);
+            }
+            
+            codeAnalysisCheckbox.on('change', updateCodeAnalysisVisibility);
+            
+            // Initial code analysis visibility setup
+            updateCodeAnalysisVisibility();
             
             // Performance monitoring logic
             const performanceMonitoringCheckbox = $('#node-input-performanceMonitoring');
@@ -505,7 +520,13 @@
         
         <!-- Code Analysis Tab -->
         <div id="code-analysis-tab" style="display: none;">
-            <div class="form-row-grouped">
+            <div class="form-row-stacked">
+                <label for="node-input-codeAnalysis"><i class="fa fa-code"></i> Enable Code Analysis</label>
+                <input type="checkbox" id="node-input-codeAnalysis" checked>
+                <div class="form-tips">Enable static code analysis to detect debugging artifacts in function nodes</div>
+            </div>
+            
+            <div class="form-row-grouped form-row-codeAnalysis">
                 <div class="form-col">
                     <label for="node-input-scanInterval"><i class="fa fa-clock-o"></i> Scan Interval (seconds)</label>
                     <input type="number" id="node-input-scanInterval" placeholder="30">

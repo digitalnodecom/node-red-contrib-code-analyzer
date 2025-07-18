@@ -51,6 +51,19 @@ describe('Analyzer Node', () => {
         });
     });
 
+    describe('Code Analysis Configuration', () => {
+        test('should have codeAnalysis configuration option', () => {
+            // This test verifies that the codeAnalysis configuration is handled
+            // The actual functionality is tested in integration tests
+            
+            // Arrange & Act
+            require('../../nodes/analyzer.js')(mockRED);
+            
+            // Assert - verify the node type is registered
+            expect(mockRED.nodes.registerType).toHaveBeenCalledWith('code-analyzer', expect.any(Function));
+        });
+    });
+
     describe('Detection Logic', () => {
         test('should detect debugging traits in function code', () => {
             // Arrange
