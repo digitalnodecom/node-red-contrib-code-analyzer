@@ -26,6 +26,9 @@ describe('Analyzer Node', () => {
             },
             events: {
                 on: jest.fn()
+            },
+            httpAdmin: {
+                get: jest.fn()
             }
         };
 

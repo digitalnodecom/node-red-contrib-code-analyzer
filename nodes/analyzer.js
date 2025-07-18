@@ -1,20 +1,33 @@
 const { detectDebuggingTraits } = require('../lib/detector');
 const SlackNotifier = require('../lib/slack-notifier');
+const PerformanceMonitor = require('../lib/performance-monitor');
 
 module.exports = function(RED) {
     function CodeAnalyzer(config) {
         RED.nodes.createNode(this, config);
         const node = this;
         
-        node.scanInterval = config.scanInterval || 30000;
+        node.scanInterval = (config.scanInterval || 30) * 1000; // Convert seconds to milliseconds
         node.detectionLevel = config.detectionLevel || 1;
         node.queueScanning = config.queueScanning || false;
         node.queueScanInterval = 3000; // Fixed at 3 seconds
-        node.queueMessageFrequency = config.queueMessageFrequency || 1800000;
+        node.queueMessageFrequency = (config.queueMessageFrequency || 1800) * 1000; // Convert seconds to milliseconds
         node.queueScanMode = config.queueScanMode || 'all';
         node.selectedQueueIds = config.selectedQueueIds || [];
         node.queueLengthThreshold = config.queueLengthThreshold || 0;
         node.slackWebhookUrl = config.slackWebhookUrl || '';
+        
+        // Performance monitoring configuration
+        node.performanceMonitoring = config.performanceMonitoring || false;
+        node.performanceInterval = Math.max((config.performanceInterval || 10) * 1000, 1000); // Convert seconds to milliseconds, min 1 second
+        node.performanceThresholds = {
+            cpuThreshold: config.cpuThreshold || 75,
+            memoryThreshold: config.memoryThreshold || 80,
+            eventLoopThreshold: config.eventLoopThreshold || 20,
+            sustainedAlertDuration: Math.max((config.sustainedAlertDuration || 300) * 1000, 60000), // Convert seconds to milliseconds, min 1 minute
+            alertCooldown: Math.max((config.alertCooldown || 1800) * 1000, 300000), // Convert seconds to milliseconds, min 5 minutes
+            dbRetentionDays: Math.max(Math.min(config.dbRetentionDays || 7, 30), 1) // Between 1-30 days
+        };
         
         // Track last message times for each queue
         node.lastMessageTimes = {};
@@ -26,11 +39,19 @@ module.exports = function(RED) {
         // Track code analysis issues for grouped messages
         node.lastCodeAnalysisMessageTime = 0;
         
+        // Track performance monitoring
+        node.lastPerformanceAlertTime = 0;
+        
         // Initialize Slack notifier
         const slackNotifier = new SlackNotifier(node.slackWebhookUrl, RED);
         
+        // Initialize performance monitor
+        const performanceMonitor = new PerformanceMonitor();
+        performanceMonitor.updateConfig(node.performanceThresholds);
+        
         let scanTimer;
         let queueMonitorTimer;
+        let performanceMonitorTimer;
         
         
         
@@ -173,6 +194,58 @@ module.exports = function(RED) {
             });
         }
         
+        async function monitorPerformance() {
+            if (!node.performanceMonitoring) return;
+            
+            try {
+                const performanceSummary = await performanceMonitor.getPerformanceSummary();
+                const now = Date.now();
+                
+                // Check if we should send performance alerts
+                if (performanceSummary.alerts.length > 0) {
+                    // Check if enough time has passed since last alert
+                    if (now - node.lastPerformanceAlertTime >= node.queueMessageFrequency) {
+                        slackNotifier.sendPerformanceAlert(performanceSummary, (msg) => node.warn(msg));
+                        node.lastPerformanceAlertTime = now;
+                    }
+                    
+                    // Update node status to show performance issues
+                    const alertCount = performanceSummary.alerts.length;
+                    const highestSeverity = performanceSummary.alerts.some(a => a.severity === 'warning') ? 'warning' : 'info';
+                    
+                    node.status({
+                        fill: highestSeverity === 'warning' ? 'red' : 'yellow',
+                        shape: 'ring',
+                        text: `Performance: ${alertCount} sustained alert${alertCount > 1 ? 's' : ''} - CPU: ${performanceSummary.current.cpu.toFixed(1)}%, Mem: ${performanceSummary.current.memory.toFixed(1)}%`
+                    });
+                } else {
+                    // Check if any metrics are currently over threshold (but not sustained)
+                    const current = performanceSummary.current;
+                    const isOverThreshold = current.cpu > node.performanceThresholds.cpuThreshold || 
+                                          current.memory > node.performanceThresholds.memoryThreshold ||
+                                          (current.eventLoopLag && current.eventLoopLag > node.performanceThresholds.eventLoopThreshold);
+                    
+                    if (isOverThreshold) {
+                        // Show warning status for current threshold violations
+                        node.status({
+                            fill: 'yellow',
+                            shape: 'ring',
+                            text: `Performance: Over threshold - CPU: ${current.cpu.toFixed(1)}%, Mem: ${current.memory.toFixed(1)}%`
+                        });
+                    } else {
+                        // Show OK status when all metrics are within thresholds
+                        node.status({
+                            fill: 'green',
+                            shape: 'ring',
+                            text: `Performance: OK - CPU: ${current.cpu.toFixed(1)}%, Mem: ${current.memory.toFixed(1)}%`
+                        });
+                    }
+                }
+            } catch (error) {
+                node.error('Error monitoring performance: ' + error.message);
+            }
+        }
+        
         function startScanning() {
             scanCurrentFlow();
             
@@ -183,6 +256,12 @@ module.exports = function(RED) {
             // Start queue monitoring if enabled
             if (node.queueScanning) {
                 queueMonitorTimer = setInterval(monitorQueues, node.queueScanInterval);
+            }
+            
+            // Start performance monitoring if enabled
+            if (node.performanceMonitoring) {
+                performanceMonitor.start();
+                performanceMonitorTimer = setInterval(monitorPerformance, node.performanceInterval);
             }
         }
         
@@ -195,9 +274,18 @@ module.exports = function(RED) {
         node.on('close', function() {
             if (scanTimer) {
                 clearInterval(scanTimer);
+                scanTimer = null;
             }
             if (queueMonitorTimer) {
                 clearInterval(queueMonitorTimer);
+                queueMonitorTimer = null;
+            }
+            if (performanceMonitorTimer) {
+                clearInterval(performanceMonitorTimer);
+                performanceMonitorTimer = null;
+            }
+            if (performanceMonitor) {
+                performanceMonitor.stop();
             }
         });
         
@@ -209,4 +297,11 @@ module.exports = function(RED) {
     }
     
     RED.nodes.registerType('code-analyzer', CodeAnalyzer);
+    
+    // API endpoint to get database path for UI display
+    RED.httpAdmin.get('/code-analyzer/db-path', function(_, res) {
+        const path = require('path');
+        const dbPath = path.join(process.cwd(), 'performance_metrics.db');
+        res.json({ dbPath: dbPath });
+    });
 };
