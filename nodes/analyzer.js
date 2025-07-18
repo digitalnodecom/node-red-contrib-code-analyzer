@@ -214,18 +214,32 @@ module.exports = function(RED) {
                     const highestSeverity = performanceSummary.alerts.some(a => a.severity === 'warning') ? 'warning' : 'info';
                     
                     node.status({
-                        fill: highestSeverity === 'warning' ? 'orange' : 'yellow',
+                        fill: highestSeverity === 'warning' ? 'red' : 'yellow',
                         shape: 'ring',
                         text: `Performance: ${alertCount} sustained alert${alertCount > 1 ? 's' : ''} - CPU: ${performanceSummary.current.cpu.toFixed(1)}%, Mem: ${performanceSummary.current.memory.toFixed(1)}%`
                     });
                 } else {
-                    // Show current performance metrics in status
+                    // Check if any metrics are currently over threshold (but not sustained)
                     const current = performanceSummary.current;
-                    node.status({
-                        fill: 'green',
-                        shape: 'ring',
-                        text: `Performance: OK - CPU: ${current.cpu.toFixed(1)}%, Mem: ${current.memory.toFixed(1)}%`
-                    });
+                    const isOverThreshold = current.cpu > node.performanceThresholds.cpuThreshold || 
+                                          current.memory > node.performanceThresholds.memoryThreshold ||
+                                          (current.eventLoopLag && current.eventLoopLag > node.performanceThresholds.eventLoopThreshold);
+                    
+                    if (isOverThreshold) {
+                        // Show warning status for current threshold violations
+                        node.status({
+                            fill: 'yellow',
+                            shape: 'ring',
+                            text: `Performance: Over threshold - CPU: ${current.cpu.toFixed(1)}%, Mem: ${current.memory.toFixed(1)}%`
+                        });
+                    } else {
+                        // Show OK status when all metrics are within thresholds
+                        node.status({
+                            fill: 'green',
+                            shape: 'ring',
+                            text: `Performance: OK - CPU: ${current.cpu.toFixed(1)}%, Mem: ${current.memory.toFixed(1)}%`
+                        });
+                    }
                 }
             } catch (error) {
                 node.error('Error monitoring performance: ' + error.message);
