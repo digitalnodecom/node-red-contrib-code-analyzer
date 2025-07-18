@@ -8,17 +8,48 @@ module.exports = function(RED) {
         node.scanInterval = config.scanInterval || 30000;
         node.detectionLevel = config.detectionLevel || 1;
         node.queueScanning = config.queueScanning || false;
-        node.queueScanInterval = config.queueScanInterval || 3000;
+        node.queueScanInterval = 3000; // Fixed at 3 seconds
         node.queueMessageFrequency = config.queueMessageFrequency || 1800000;
         node.queueScanMode = config.queueScanMode || "all";
         node.selectedQueueIds = config.selectedQueueIds || [];
         node.queueLengthThreshold = config.queueLengthThreshold || 0;
+        node.slackWebhookUrl = config.slackWebhookUrl || "";
         
         // Track last message times for each queue
         node.lastMessageTimes = {};
         
         let scanTimer;
         let queueMonitorTimer;
+        
+        // Function to send Slack message
+        function sendSlackMessage(message) {
+            if (!node.slackWebhookUrl) {
+                // Fallback to node.warn if no Slack URL configured
+                node.warn(message);
+                return;
+            }
+            
+            const payload = {
+                text: message,
+                username: "Node-RED Queue Monitor",
+                icon_emoji: ":warning:"
+            };
+            
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            };
+            
+            fetch(node.slackWebhookUrl, options)
+                .catch(error => {
+                    node.error(`Failed to send Slack message: ${error.message}`);
+                    // Fallback to node.warn on error
+                    node.warn(message);
+                });
+        }
         
         function scanCurrentFlow() {
             let totalIssues = 0;
@@ -67,8 +98,6 @@ module.exports = function(RED) {
                                 text
                             });
                         }
-                        
-                        const issueMessages = issues.map(issue => issue.message || issue);
                     } else {
                         delete nodeConfig._debugIssues;
                     }
@@ -115,7 +144,29 @@ module.exports = function(RED) {
                                 
                                 // Only send message if frequency interval has passed
                                 if (now - lastMessageTime >= node.queueMessageFrequency) {
-                                    node.warn(`Queue ${nodeConfig.name || nodeConfig.id.substring(0, 8)} length: ${queueLength}`);
+                                    // Get flow information
+                                    let flowName = `Flow ${currentFlowId.substring(0, 8)}`;
+                                    RED.nodes.eachNode(function(n) {
+                                        if (n.type === 'tab' && n.id === currentFlowId) {
+                                            flowName = n.label || n.name || flowName;
+                                        }
+                                    });
+                                    
+                                    // Try to get Node-RED instance URL
+                                    const nodeRedUrl = process.env.NODE_RED_BASE_URL || 
+                                                      (RED.settings && RED.settings.httpNodeRoot ? 
+                                                       `http://localhost:${RED.settings.uiPort || 1880}${RED.settings.httpNodeRoot}` : 
+                                                       `http://localhost:${RED.settings.uiPort || 1880}`);
+                                    
+                                    const queueName = nodeConfig.name || `Queue ${nodeConfig.id.substring(0, 8)}`;
+                                    const message = `🚨 *Queue Alert - Action Required*\n\n` +
+                                                   `*Queue:* ${queueName}\n` +
+                                                   `*Flow:* ${flowName}\n` +
+                                                   `*Items in Queue:* ${queueLength}\n\n` +
+                                                   `📝 *Recommended Action:* Please review and optimize the queue processing or increase the rate limit to prevent bottlenecks.\n\n` +
+                                                   `🔗 *Node-RED Instance:* ${nodeRedUrl}`;
+                                    
+                                    sendSlackMessage(message);
                                     node.lastMessageTimes[nodeConfig.id] = now;
                                 }
                             }
