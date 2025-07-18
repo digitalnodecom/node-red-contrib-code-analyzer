@@ -173,7 +173,12 @@ console.log("normal again");
             
             const issues = detectDebuggingTraits(code, 2);
             
-            expect(issues).toHaveLength(0);
+            // Should detect the 2 console.log statements outside ignore region
+            expect(issues).toHaveLength(2);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('console-log');
+            expect(issues[1].line).toBe(6);
         });
 
         test('should ignore issues with ignore-line directive', () => {
@@ -185,9 +190,12 @@ node.warn("debug");
             
             const issues = detectDebuggingTraits(code, 2);
             
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('node-warn');
-            expect(issues[0].line).toBe(3);
+            // Should detect console.log and node.warn, but not the return (ignored)
+            expect(issues).toHaveLength(2);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('node-warn');
+            expect(issues[1].line).toBe(3);
         });
 
         test('should ignore issues with ignore-next directive', () => {
@@ -200,9 +208,12 @@ node.warn("debug");
             
             const issues = detectDebuggingTraits(code, 2);
             
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('node-warn');
-            expect(issues[0].line).toBe(4);
+            // Should detect console.log and node.warn, but not return (ignored by ignore-next)
+            expect(issues).toHaveLength(2);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('node-warn');
+            expect(issues[1].line).toBe(4);
         });
 
         test('should handle multiple ignore types together', () => {
@@ -220,9 +231,12 @@ node.warn("debug3");
             
             const issues = detectDebuggingTraits(code, 3);
             
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('node-warn');
-            expect(issues[0].line).toBe(9);
+            // Should detect console.log and the last node.warn only
+            expect(issues).toHaveLength(2);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('node-warn');
+            expect(issues[1].line).toBe(9);
         });
 
         test('should ignore hardcoded values in ignore regions', () => {
@@ -239,9 +253,12 @@ const realTest = "test";
             
             const issues = detectDebuggingTraits(code, 3);
             
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('hardcoded-test');
-            expect(issues[0].line).toBe(8);
+            // Should detect console.log and the hardcoded test outside ignore region
+            expect(issues).toHaveLength(2);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('hardcoded-test');
+            expect(issues[1].line).toBe(8);
         });
 
         test('should ignore TODO comments in ignore regions', () => {
@@ -256,9 +273,12 @@ console.log("normal");
             
             const issues = detectDebuggingTraits(code, 2);
             
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('todo-comment');
-            expect(issues[0].line).toBe(6);
+            // Should detect console.log and the TODO outside ignore region
+            expect(issues).toHaveLength(2);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('todo-comment');
+            expect(issues[1].line).toBe(6);
         });
 
         test('should ignore multiple empty lines in ignore regions', () => {
@@ -276,9 +296,14 @@ console.log("normal again");
             
             const issues = detectDebuggingTraits(code, 3);
             
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('multiple-empty-lines');
-            expect(issues[0].line).toBe(7);
+            // Should detect both console.log statements and the empty lines outside ignore region
+            expect(issues).toHaveLength(3);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('console-log');
+            expect(issues[1].line).toBe(9);
+            expect(issues[2].type).toBe('multiple-empty-lines');
+            expect(issues[2].line).toBe(7);
         });
 
         test('should handle nested ignore directives gracefully', () => {
@@ -295,7 +320,12 @@ console.log("normal again");
             
             const issues = detectDebuggingTraits(code, 2);
             
-            expect(issues).toHaveLength(0);
+            // Should detect both console.log statements outside ignore region
+            expect(issues).toHaveLength(2);
+            expect(issues[0].type).toBe('console-log');
+            expect(issues[0].line).toBe(1);
+            expect(issues[1].type).toBe('console-log');
+            expect(issues[1].line).toBe(8);
         });
     });
 });
