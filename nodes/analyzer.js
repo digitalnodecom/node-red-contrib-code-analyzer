@@ -7,15 +7,25 @@ module.exports = function(RED) {
         
         node.scanInterval = config.scanInterval || 30000;
         node.detectionLevel = config.detectionLevel || 1;
+        node.queueScanning = config.queueScanning || false;
+        node.queueScanInterval = config.queueScanInterval || 3000;
+        node.queueMessageFrequency = config.queueMessageFrequency || 1800000;
+        node.queueScanMode = config.queueScanMode || "all";
+        node.selectedQueueIds = config.selectedQueueIds || [];
+        node.queueLengthThreshold = config.queueLengthThreshold || 0;
+        
+        // Track last message times for each queue
+        node.lastMessageTimes = {};
         
         let scanTimer;
+        let queueMonitorTimer;
         
         function scanCurrentFlow() {
             let totalIssues = 0;
             let nodesWithIssues = 0;
             
             const currentFlowId = node.z;
-            
+                
             RED.nodes.eachNode(function (nodeConfig) {
                 if (nodeConfig.type === 'function' && nodeConfig.z === currentFlowId) {
                     const functionNode = RED.nodes.getNode(nodeConfig.id);
@@ -59,7 +69,6 @@ module.exports = function(RED) {
                         }
                         
                         const issueMessages = issues.map(issue => issue.message || issue);
-                        node.warn(`Function node ${nodeConfig.id} (${nodeConfig.name || 'unnamed'}) has debugging issues: ${issueMessages.join(', ')}`);
                     } else {
                         delete nodeConfig._debugIssues;
                     }
@@ -81,11 +90,51 @@ module.exports = function(RED) {
             }
         }
         
+        function monitorQueues() {
+            if (!node.queueScanning) return;
+            
+            const currentFlowId = node.z;
+            
+            RED.nodes.eachNode(function (nodeConfig) {
+                if (nodeConfig.type === 'delay' && nodeConfig.pauseType == "rate" && nodeConfig.z === currentFlowId) {
+                    // Check if we should monitor this specific queue
+                    const shouldMonitor = node.queueScanMode === "all" || 
+                                        (node.queueScanMode === "specific" && node.selectedQueueIds.includes(nodeConfig.id));
+                    
+                    if (shouldMonitor) {
+                        const delayNode = RED.nodes.getNode(nodeConfig.id);
+                        
+                        if (delayNode) {
+                            const queueLength = delayNode?.buffer.length;
+                            const droppedCount = delayNode.droppedMsgs;
+                            const isDropping = delayNode.drop;
+
+                            if (queueLength > node.queueLengthThreshold) {
+                                const now = Date.now();
+                                const lastMessageTime = node.lastMessageTimes[nodeConfig.id] || 0;
+                                
+                                // Only send message if frequency interval has passed
+                                if (now - lastMessageTime >= node.queueMessageFrequency) {
+                                    node.warn(`Queue ${nodeConfig.name || nodeConfig.id.substring(0, 8)} length: ${queueLength}`);
+                                    node.lastMessageTimes[nodeConfig.id] = now;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
         function startScanning() {
             scanCurrentFlow();
             
             if (node.scanInterval > 0) {
                 scanTimer = setInterval(scanCurrentFlow, node.scanInterval);
+            }
+            
+            // Start queue monitoring if enabled
+            if (node.queueScanning) {
+                queueMonitorTimer = setInterval(monitorQueues, node.queueScanInterval);
             }
         }
         
@@ -99,6 +148,13 @@ module.exports = function(RED) {
             if (scanTimer) {
                 clearInterval(scanTimer);
             }
+            if (queueMonitorTimer) {
+                clearInterval(queueMonitorTimer);
+            }
+        });
+        
+        RED.events.on('nodes-started', function() {
+            scanCurrentFlow();
         });
         
         setTimeout(startScanning, 1000);
