@@ -1,4 +1,5 @@
 const { detectDebuggingTraits } = require('../lib/detector');
+const SlackNotifier = require('../lib/slack-notifier');
 
 module.exports = function(RED) {
     function CodeAnalyzer(config) {
@@ -8,17 +9,31 @@ module.exports = function(RED) {
         node.scanInterval = config.scanInterval || 30000;
         node.detectionLevel = config.detectionLevel || 1;
         node.queueScanning = config.queueScanning || false;
-        node.queueScanInterval = config.queueScanInterval || 3000;
+        node.queueScanInterval = 3000; // Fixed at 3 seconds
         node.queueMessageFrequency = config.queueMessageFrequency || 1800000;
         node.queueScanMode = config.queueScanMode || "all";
         node.selectedQueueIds = config.selectedQueueIds || [];
         node.queueLengthThreshold = config.queueLengthThreshold || 0;
+        node.slackWebhookUrl = config.slackWebhookUrl || "";
         
         // Track last message times for each queue
         node.lastMessageTimes = {};
         
+        // Track pending alerts for grouped queue messages
+        node.pendingQueueAlerts = {};
+        node.lastQueueMessageTimes = {}; // Per-queue timing
+        
+        // Track code analysis issues for grouped messages
+        node.lastCodeAnalysisMessageTime = 0;
+        
+        // Initialize Slack notifier
+        const slackNotifier = new SlackNotifier(node.slackWebhookUrl, RED);
+        
         let scanTimer;
         let queueMonitorTimer;
+        
+        
+        
         
         function scanCurrentFlow() {
             let totalIssues = 0;
@@ -67,8 +82,6 @@ module.exports = function(RED) {
                                 text
                             });
                         }
-                        
-                        const issueMessages = issues.map(issue => issue.message || issue);
                     } else {
                         delete nodeConfig._debugIssues;
                     }
@@ -81,6 +94,13 @@ module.exports = function(RED) {
                     shape: "dot",
                     text: `Found ${totalIssues} debugging traits in ${nodesWithIssues} nodes`
                 });
+                
+                // Send code analysis message if frequency interval has passed
+                const now = Date.now();
+                if (now - node.lastCodeAnalysisMessageTime >= node.queueMessageFrequency) {
+                    slackNotifier.sendCodeAnalysisAlert(currentFlowId, totalIssues, nodesWithIssues, (msg) => node.warn(msg));
+                    node.lastCodeAnalysisMessageTime = now;
+                }
             } else {
                 node.status({
                     fill: "green",
@@ -113,10 +133,41 @@ module.exports = function(RED) {
                                 const now = Date.now();
                                 const lastMessageTime = node.lastMessageTimes[nodeConfig.id] || 0;
                                 
-                                // Only send message if frequency interval has passed
-                                if (now - lastMessageTime >= node.queueMessageFrequency) {
-                                    node.warn(`Queue ${nodeConfig.name || nodeConfig.id.substring(0, 8)} length: ${queueLength}`);
-                                    node.lastMessageTimes[nodeConfig.id] = now;
+                                // Add to pending alerts for grouped messaging
+                                if (queueLength > node.queueLengthThreshold) {
+                                    // Get flow information
+                                    let flowName = `Flow ${currentFlowId.substring(0, 8)}`;
+                                    RED.nodes.eachNode(function(n) {
+                                        if (n.type === 'tab' && n.id === currentFlowId) {
+                                            flowName = n.label || n.name || flowName;
+                                        }
+                                    });
+                                    
+                                    const queueName = nodeConfig.name || `Queue ${nodeConfig.id.substring(0, 8)}`;
+                                    
+                                    // Store alert info for grouping
+                                    node.pendingQueueAlerts[nodeConfig.id] = {
+                                        queueName: queueName,
+                                        flowName: flowName,
+                                        queueLength: queueLength,
+                                        timestamp: now
+                                    };
+                                }
+                                
+                                // Check if this specific queue can send a message
+                                const lastQueueMessageTime = node.lastQueueMessageTimes[nodeConfig.id] || 0;
+                                if (now - lastQueueMessageTime >= node.queueMessageFrequency) {
+                                    // Send individual queue alert for this specific queue
+                                    const singleQueueAlert = {};
+                                    singleQueueAlert[nodeConfig.id] = node.pendingQueueAlerts[nodeConfig.id];
+                                    
+                                    slackNotifier.sendQueueAlert(singleQueueAlert, (msg) => node.warn(msg));
+                                    
+                                    // Update timing for this specific queue
+                                    node.lastQueueMessageTimes[nodeConfig.id] = now;
+                                    
+                                    // Remove this queue from pending alerts
+                                    delete node.pendingQueueAlerts[nodeConfig.id];
                                 }
                             }
                         }
