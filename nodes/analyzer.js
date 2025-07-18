@@ -10,7 +10,8 @@ module.exports = function(RED) {
         node.queueScanning = config.queueScanning || false;
         node.queueScanInterval = config.queueScanInterval || 30000;
         node.queueScanMode = config.queueScanMode || "all";
-        node.selectedQueueId = config.selectedQueueId || "";
+        node.selectedQueueIds = config.selectedQueueIds || [];
+        node.queueLengthThreshold = config.queueLengthThreshold || 0;
         
         let scanTimer;
         let queueMonitorTimer;
@@ -94,7 +95,7 @@ module.exports = function(RED) {
                 if (nodeConfig.type === 'delay' && nodeConfig.pauseType == "rate" && nodeConfig.z === currentFlowId) {
                     // Check if we should monitor this specific queue
                     const shouldMonitor = node.queueScanMode === "all" || 
-                                        (node.queueScanMode === "specific" && nodeConfig.id === node.selectedQueueId);
+                                        (node.queueScanMode === "specific" && node.selectedQueueIds.includes(nodeConfig.id));
                     
                     if (shouldMonitor) {
                         const delayNode = RED.nodes.getNode(nodeConfig.id);
@@ -104,7 +105,7 @@ module.exports = function(RED) {
                             const droppedCount = delayNode.droppedMsgs;
                             const isDropping = delayNode.drop;
 
-                            if ( queueLength > 0 )
+                            if (queueLength > node.queueLengthThreshold)
                                 node.warn(queueLength)
                         }
                     }
