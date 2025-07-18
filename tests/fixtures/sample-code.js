@@ -51,12 +51,10 @@ node.warn("second");`,
     },
 
     // Multiple issues
-    multipleIssues: `function processData() {
-    return; // Level 1
-    node.warn("debugging"); // Level 2
-    const mode = "test"; // Level 3
-    // TODO: optimize this // Level 2
-}`,
+    multipleIssues: `return; // Level 1
+node.warn("debugging"); // Level 2
+const mode = "test"; // Level 3
+// TODO: optimize this // Level 2`,
 
     // Clean code
     cleanCode: `

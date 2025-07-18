@@ -268,8 +268,8 @@
                     return result;
                 }
             } catch (error) {
-                console.warn('Browser AST parsing failed, falling back to regex:', error.message);
-                return detectWithRegex(code, level, ignoreRegions, ignoreLines, ignoreNextLines);
+                console.warn('Browser AST parsing failed:', error.message);
+                return [];
             }
         }
         
@@ -287,7 +287,7 @@
                     };
                     script.onerror = () => {
                         console.warn('Failed to load Acorn parser from CDN');
-                        resolve(detectWithRegex(code, level, ignoreRegions, ignoreLines, ignoreNextLines));
+                        resolve([]);
                     };
                     document.head.appendChild(script);
                 });
@@ -647,85 +647,6 @@
             }
         }
         
-        function detectWithRegex(code, level, ignoreRegions, ignoreLines, ignoreNextLines) {
-            const issues = [];
-            const lines = code.split('\n');
-            
-            if (level >= 1) {
-                let braceDepth = 0;
-                let controlStructureStack = [];
-                let pendingControlStructures = [];
-                
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    const trimmed = line.trim();
-                    const lineNumber = i + 1;
-                    
-                    const openBraces = (line.match(/\{/g) || []).length;
-                    const closeBraces = (line.match(/\}/g) || []).length;
-                    
-                    // Check if this line contains a control structure keyword
-                    const controlStructurePattern = /\b(if|else|for|while|do|switch|try|catch|finally)\b/i;
-                    if (controlStructurePattern.test(trimmed)) {
-                        pendingControlStructures.push(true);
-                    }
-                    
-                    // When we encounter opening braces, check if we have pending control structures
-                    if (openBraces > 0) {
-                        for (let j = 0; j < openBraces; j++) {
-                            // Check if this is an arrow function (skip it for control structures)
-                            const isArrowFunction = /=>\s*\{/.test(trimmed);
-                            
-                            // If we have pending control structures and this is not an arrow function
-                            if (pendingControlStructures.length > 0 && !isArrowFunction) {
-                                controlStructureStack.push(braceDepth + 1 + j);
-                                pendingControlStructures.pop();
-                            }
-                            // Also check if the control structure and brace are on the same line
-                            else if (controlStructurePattern.test(trimmed)) {
-                                controlStructureStack.push(braceDepth + 1 + j);
-                            }
-                        }
-                    }
-                    
-                    // Remove control structures from stack when we exit their blocks
-                    if (closeBraces > 0) {
-                        for (let j = 0; j < closeBraces; j++) {
-                            const exitDepth = braceDepth + 1 - j;
-                            const stackIndex = controlStructureStack.indexOf(exitDepth);
-                            if (stackIndex !== -1) {
-                                controlStructureStack.splice(stackIndex, 1);
-                            }
-                        }
-                    }
-                    
-                    if (/^\s*return\s*;?\s*(?:\/\/.*)?$/.test(trimmed)) {
-                        // Only flag TRULY top-level returns (not inside control structures)
-                        const isInControlStructure = controlStructureStack.length > 0;
-                        const isAtFunctionLevel = braceDepth === 0 || braceDepth === 1;
-                        
-                        // IMPORTANT: Only flag if it's at function level AND not in control structures
-                        if (isAtFunctionLevel && !isInControlStructure) {
-                            // Check if this line should be ignored
-                            if (!shouldIgnoreLineBrowser(lineNumber, ignoreRegions, ignoreLines, ignoreNextLines)) {
-                                issues.push({
-                                    type: "top-level-return",
-                                    message: "Remove this top-level return statement",
-                                    line: lineNumber,
-                                    column: line.indexOf('return') + 1,
-                                    endColumn: line.indexOf('return') + 'return'.length + 1,
-                                    severity: "warning"
-                                });
-                            }
-                        }
-                    }
-                    
-                    braceDepth += openBraces - closeBraces;
-                }
-            }
-            
-            return issues;
-        }
         
         if (RED.editor.codeEditor) {
             const originalCreateEditor = RED.editor.codeEditor.create;
