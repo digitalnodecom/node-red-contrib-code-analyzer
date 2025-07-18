@@ -177,7 +177,7 @@ jobs:
         echo "✅ Build artifact created"
     
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: node-red-contrib-code-analyzer
         path: dist/
