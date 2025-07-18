@@ -60,8 +60,7 @@ node.warn("debug"); // This line will be flagged
 ```
 
 ### Supported Directive Formats
-- `@nr-analyzer-ignore-*` (recommended)
-- `@nr-analizer-ignore-*` (alternative spelling)
+- `@nr-analyzer-ignore-*` (required spelling)
 - Case insensitive: `@NR-ANALYZER-IGNORE-START` works the same
 - Flexible spacing: `// @nr-analyzer-ignore-start` and `//   @nr-analyzer-ignore-start` both work
 
