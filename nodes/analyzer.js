@@ -7,6 +7,7 @@ module.exports = function(RED) {
         RED.nodes.createNode(this, config);
         const node = this;
         
+        node.codeAnalysis = config.codeAnalysis !== undefined ? config.codeAnalysis : true;
         node.scanInterval = (config.scanInterval || 30) * 1000; // Convert seconds to milliseconds
         node.detectionLevel = config.detectionLevel || 1;
         node.queueScanning = config.queueScanning || false;
@@ -57,6 +58,16 @@ module.exports = function(RED) {
         
         
         function scanCurrentFlow() {
+            if (!node.codeAnalysis) {
+                // Code analysis disabled - just update node status
+                node.status({
+                    fill: 'grey',
+                    shape: 'dot',
+                    text: 'Code analysis disabled'
+                });
+                return;
+            }
+            
             let totalIssues = 0;
             let nodesWithIssues = 0;
             
@@ -249,7 +260,7 @@ module.exports = function(RED) {
         function startScanning() {
             scanCurrentFlow();
             
-            if (node.scanInterval > 0) {
+            if (node.codeAnalysis && node.scanInterval > 0) {
                 scanTimer = setInterval(scanCurrentFlow, node.scanInterval);
             }
             
@@ -266,8 +277,12 @@ module.exports = function(RED) {
         }
         
         node.on('input', function(msg) {
-            scanCurrentFlow();
-            msg.payload = { action: 'scan_completed', timestamp: new Date().toISOString() };
+            if (node.codeAnalysis) {
+                scanCurrentFlow();
+                msg.payload = { action: 'scan_completed', timestamp: new Date().toISOString() };
+            } else {
+                msg.payload = { action: 'scan_skipped', reason: 'code_analysis_disabled', timestamp: new Date().toISOString() };
+            }
             node.send(msg);
         });
         
