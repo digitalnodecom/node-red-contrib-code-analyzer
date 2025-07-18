@@ -8,11 +8,11 @@
             detectionLevel: {value: 1, required: true, validate: RED.validators.number()},
             autoStart: {value: true},
             queueScanning: {value: false},
-            queueScanInterval: {value: 3000, required: true, validate: RED.validators.number()},
             queueMessageFrequency: {value: 1800000, required: true, validate: RED.validators.number()},
             queueScanMode: {value: "all"},
             selectedQueueIds: {value: []},
-            queueLengthThreshold: {value: 0, required: true, validate: RED.validators.number()}
+            queueLengthThreshold: {value: 0, required: true, validate: RED.validators.number()},
+            slackWebhookUrl: {value: ""}
         },
         inputs: 1,
         outputs: 0,
@@ -26,12 +26,14 @@
             const queueScanModeSelect = $('#node-input-queueScanMode');
             const selectedQueueRow = $('.form-row-selectedQueue');
             const queueThresholdRow = $('.form-row-queueThreshold');
+            const slackRow = $('.form-row-slack');
             
             function updateQueueVisibility() {
                 const isQueueScanningEnabled = queueScanningCheckbox.prop('checked');
                 $('.form-row-queueInterval').toggle(isQueueScanningEnabled);
                 $('.form-row-queueMode').toggle(isQueueScanningEnabled);
                 queueThresholdRow.toggle(isQueueScanningEnabled);
+                slackRow.toggle(isQueueScanningEnabled);
                 
                 if (isQueueScanningEnabled) {
                     const isSpecificQueue = queueScanModeSelect.val() === 'specific';
@@ -430,17 +432,10 @@
         </div>
     </div>
     
-    <div class="form-row-grouped form-row-queueInterval" style="display: none;">
-        <div class="form-col">
-            <label for="node-input-queueScanInterval"><i class="fa fa-clock-o"></i> Queue Scan Interval (ms)</label>
-            <input type="number" id="node-input-queueScanInterval" placeholder="3000">
-            <div class="form-tips">How often to check queue status (recommended: 3000ms)</div>
-        </div>
-        <div class="form-col">
-            <label for="node-input-queueMessageFrequency"><i class="fa fa-bell"></i> Message Frequency (ms)</label>
-            <input type="number" id="node-input-queueMessageFrequency" placeholder="1800000">
-            <div class="form-tips">How often to send warning messages (default: 30min)</div>
-        </div>
+    <div class="form-row-stacked form-row-queueInterval" style="display: none;">
+        <label for="node-input-queueMessageFrequency"><i class="fa fa-bell"></i> Message Frequency (ms)</label>
+        <input type="number" id="node-input-queueMessageFrequency" placeholder="1800000">
+        <div class="form-tips">How often to send warning messages (default: 30min)</div>
     </div>
     
     <div class="form-row-stacked form-row-queueMode" style="display: none;">
@@ -464,6 +459,12 @@
         <label for="node-input-queueLengthThreshold"><i class="fa fa-exclamation-triangle"></i> Queue Length Threshold</label>
         <input type="number" id="node-input-queueLengthThreshold" placeholder="0" min="0">
         <div class="form-tips">Only warn when queue length exceeds this value (0 = warn on any queue length)</div>
+    </div>
+    
+    <div class="form-row-stacked form-row-slack" style="display: none;">
+        <label for="node-input-slackWebhookUrl"><i class="fa fa-slack"></i> Slack Webhook URL</label>
+        <input type="text" id="node-input-slackWebhookUrl" placeholder="https://hooks.slack.com/services/...">
+        <div class="form-tips">Enter your Slack webhook URL to send notifications (leave empty to use node.warn)</div>
     </div>
 </script>
 
