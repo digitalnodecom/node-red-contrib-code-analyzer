@@ -12,7 +12,12 @@
             queueScanMode: {value: "all"},
             selectedQueueIds: {value: []},
             queueLengthThreshold: {value: 0, required: true, validate: RED.validators.number()},
-            slackWebhookUrl: {value: ""}
+            slackWebhookUrl: {value: ""},
+            performanceMonitoring: {value: false},
+            performanceInterval: {value: 10000, required: true, validate: RED.validators.number()},
+            cpuThreshold: {value: 80, required: true, validate: RED.validators.number()},
+            memoryThreshold: {value: 85, required: true, validate: RED.validators.number()},
+            eventLoopThreshold: {value: 100, required: true, validate: RED.validators.number()}
         },
         inputs: 1,
         outputs: 0,
@@ -45,6 +50,11 @@
             tabs.addTab({
                 id: "queue-monitoring-tab",
                 label: "Queue Monitoring"
+            });
+            
+            tabs.addTab({
+                id: "performance-monitoring-tab",
+                label: "Performance Monitoring"
             });
             
             // Queue monitoring logic
@@ -97,6 +107,22 @@
             
             // Initial visibility setup
             updateQueueVisibility();
+            
+            // Performance monitoring logic
+            const performanceMonitoringCheckbox = $('#node-input-performanceMonitoring');
+            const performanceThresholdRows = $('.form-row-performanceThreshold');
+            const performanceIntervalRow = $('.form-row-performanceInterval');
+            
+            function updatePerformanceVisibility() {
+                const isPerformanceMonitoringEnabled = performanceMonitoringCheckbox.prop('checked');
+                performanceThresholdRows.toggle(isPerformanceMonitoringEnabled);
+                performanceIntervalRow.toggle(isPerformanceMonitoringEnabled);
+            }
+            
+            performanceMonitoringCheckbox.on('change', updatePerformanceVisibility);
+            
+            // Initial performance visibility setup
+            updatePerformanceVisibility();
         },
         oneditsave: function() {
             // Collect checked queue IDs
@@ -507,6 +533,40 @@
                 <div class="form-tips">Only warn when queue length exceeds this value (0 = warn on any queue length)</div>
             </div>
         </div>
+        
+        <!-- Performance Monitoring Tab -->
+        <div id="performance-monitoring-tab" style="display: none;">
+            <div class="form-row-stacked">
+                <label for="node-input-performanceMonitoring"><i class="fa fa-tachometer"></i> Performance Monitoring</label>
+                <input type="checkbox" id="node-input-performanceMonitoring">
+                <div class="form-tips">Enable monitoring of system performance metrics (CPU, memory, event loop)</div>
+            </div>
+            
+            <div class="form-row-stacked form-row-performanceInterval" style="display: none;">
+                <label for="node-input-performanceInterval"><i class="fa fa-clock-o"></i> Performance Check Interval (ms)</label>
+                <input type="number" id="node-input-performanceInterval" placeholder="10000" min="1000">
+                <div class="form-tips">How often to check performance metrics (minimum 1000ms)</div>
+            </div>
+            
+            <div class="form-row-grouped form-row-performanceThreshold" style="display: none;">
+                <div class="form-col">
+                    <label for="node-input-cpuThreshold"><i class="fa fa-microchip"></i> CPU Threshold (%)</label>
+                    <input type="number" id="node-input-cpuThreshold" placeholder="80" min="1" max="100">
+                    <div class="form-tips">Alert when CPU usage exceeds this percentage</div>
+                </div>
+                <div class="form-col">
+                    <label for="node-input-memoryThreshold"><i class="fa fa-memory"></i> Memory Threshold (%)</label>
+                    <input type="number" id="node-input-memoryThreshold" placeholder="85" min="1" max="100">
+                    <div class="form-tips">Alert when memory usage exceeds this percentage</div>
+                </div>
+            </div>
+            
+            <div class="form-row-stacked form-row-performanceThreshold" style="display: none;">
+                <label for="node-input-eventLoopThreshold"><i class="fa fa-refresh"></i> Event Loop Lag Threshold (ms)</label>
+                <input type="number" id="node-input-eventLoopThreshold" placeholder="100" min="1">
+                <div class="form-tips">Alert when event loop lag exceeds this value in milliseconds</div>
+            </div>
+        </div>
     </div>
 </script>
 
@@ -530,6 +590,15 @@
         
         <dt>Auto Start <span class="property-type">boolean</span></dt>
         <dd>Whether to start scanning automatically when the node is deployed.</dd>
+        
+        <dt>Performance Monitoring <span class="property-type">boolean</span></dt>
+        <dd>Enable monitoring of system performance metrics (CPU, memory, event loop lag).</dd>
+        
+        <dt>Performance Interval <span class="property-type">number</span></dt>
+        <dd>How often to check performance metrics (in milliseconds, minimum 1000ms).</dd>
+        
+        <dt>CPU/Memory/Event Loop Thresholds <span class="property-type">number</span></dt>
+        <dd>Alert thresholds for CPU usage (%), memory usage (%), and event loop lag (ms).</dd>
     </dl>
     
     <h3>Inputs</h3>
@@ -549,6 +618,8 @@
     <ul>
         <li><strong>Green:</strong> No debugging traits found</li>
         <li><strong>Yellow:</strong> Found debugging traits (shows count)</li>
+        <li><strong>Green ring:</strong> Performance monitoring OK (when enabled)</li>
+        <li><strong>Yellow/Orange ring:</strong> Performance alerts detected</li>
     </ul>
     
     <p>Function nodes with issues show:</p>

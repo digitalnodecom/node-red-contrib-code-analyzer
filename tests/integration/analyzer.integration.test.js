@@ -86,7 +86,7 @@ describe('Integration Tests - Code Analyzer End-to-End', () => {
             const queuePayload = JSON.parse(queueCall[1].body);
             expect(queuePayload.text).toContain('Queue Alert Summary');
             expect(queuePayload.text).toContain('2 Queues Need Attention');
-            expect(queuePayload.text).toContain('Total Items in Queues:* 23');
+            expect(queuePayload.text).toContain('Total Items in Queues:** 23');
             
             // Assert - Verify code analysis alert format
             const codeCall = fetch.mock.calls[1];

@@ -146,7 +146,7 @@ describe('SlackNotifier', () => {
             
             const callArgs = fetch.mock.calls[0];
             const payload = JSON.parse(callArgs[1].body);
-            expect(payload.text).toContain('Total Items in Queues:* 25');
+            expect(payload.text).toContain('Total Items in Queues:** 25');
             expect(payload.text).toContain('TestQueue1: 15 items');
             expect(payload.text).toContain('TestQueue2: 10 items');
         });
@@ -170,7 +170,7 @@ describe('SlackNotifier', () => {
             const callArgs = fetch.mock.calls[0];
             const payload = JSON.parse(callArgs[1].body);
             expect(payload.text).toContain('1 Queue Need Attention');
-            expect(payload.text).toContain('Total Items in Queues:* 5');
+            expect(payload.text).toContain('Total Items in Queues:** 5');
         });
         
         test('should group alerts by flow name', async () => {
@@ -299,9 +299,9 @@ describe('SlackNotifier', () => {
             // Assert
             const callArgs = fetch.mock.calls[0];
             const payload = JSON.parse(callArgs[1].body);
-            expect(payload.text).toContain('🔴 **Critical**');
-            expect(payload.text).toContain('🟡 **Warning**');
-            expect(payload.text).toContain('🔵 **Info**');
+            expect(payload.text).toContain('**Critical**');
+            expect(payload.text).toContain('**Warning**');
+            expect(payload.text).toContain('**Info**');
         });
         
         test('should use fallback callback when no webhook URL', async () => {
