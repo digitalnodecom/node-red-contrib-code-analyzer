@@ -1,14 +1,18 @@
 # Node-RED Code Analyzer
 
-A Node-RED package that continuously monitors all function nodes in the current flow to detect debugging artifacts and forgotten debugging code. Features Monaco editor integration with real-time highlighting and problem markers.
+[![CI/CD Pipeline](https://github.com/your-username/node-red-contrib-code-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/node-red-contrib-code-analyzer/actions/workflows/ci.yml)
+[![Coverage Status](https://codecov.io/gh/your-username/node-red-contrib-code-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/node-red-contrib-code-analyzer)
+
+A comprehensive Node-RED package that provides background services to detect debugging artifacts in function nodes and monitor queue performance across Node-RED flows.
 
 ## Features
 
-- **Background monitoring**: Continuously scans all function nodes in the current flow
-- **Visual indicators**: Shows red status indicators on function nodes with debugging issues
-- **Level-based detection**: Choose detection strictness from 3 predefined levels
-- **Monaco editor integration**: Highlights problematic lines with markers and visual indicators
-- **Set-and-forget**: Works automatically within the current flow without modifying existing nodes
+- **🔍 Static Code Analysis**: Detects debugging artifacts in function nodes
+- **📊 Queue Monitoring**: Monitors delay node queues and sends alerts
+- **🔔 Slack Integration**: Sends formatted alerts to Slack channels
+- **📈 Real-time Monitoring**: Continuous background scanning
+- **🎯 Configurable Detection**: Multiple detection levels and thresholds
+- **🖥️ Monaco Editor Integration**: Real-time highlighting and problem markers
 
 ## Detection Levels
 
@@ -30,128 +34,124 @@ Includes Level 2 plus:
 
 ## Installation
 
-### From npm (if published)
 ```bash
 npm install node-red-contrib-code-analyzer
 ```
 
-### Local installation
-1. Copy this package to your Node-RED user directory
-2. Navigate to the package directory
-3. Install dependencies:
-```bash
-npm install
-```
-4. Restart Node-RED
-
 ## Usage
 
-1. **Add the analyzer node**: Drag a "Code Analyzer" node from the utility category into any flow
-2. **Configure settings**: Double-click to configure scan interval and detection level
-3. **Deploy**: The analyzer will automatically start scanning all function nodes in the current flow
-4. **Monitor**: Function nodes with debugging issues will show red status indicators
-5. **Edit function nodes**: When you open a function node with issues, you'll see highlighted lines and problem markers in the Monaco editor
-
-## Configuration Options
-
-- **Scan Interval**: How often to scan all function nodes (default: 30 seconds)
-- **Detection Level**: Choose from 3 levels of detection strictness (1, 2, or 3)
-- **Auto Start**: Whether to start scanning automatically when deployed
-
-## Status Indicators
-
-### Analyzer Node
-- **Green dot**: No debugging traits found
-- **Yellow dot**: Found debugging traits (shows count)
-
-### Function Nodes
-Function nodes display colored status indicators based on the highest priority issue detected:
-- **Red dot**: Contains Level 1 issues (critical top-level returns)
-- **Orange dot**: Contains Level 2 issues (no Level 1 issues present)
-- **Yellow dot**: Contains only Level 3 issues
-- **No status**: Clean function node with no issues
-
-## Manual Scanning
-
-Send any message to the analyzer node to trigger an immediate scan of all function nodes.
-
-## Example Function Node Issues
-
-### Level 1 Examples
-```javascript
-// Top-level return (critical issue)
-return;  // ← This will be flagged
-
-// This is NOT flagged (inside a block)
-if (someCondition) {
-    return;  // ← This will NOT be flagged
-}
-```
-
-### Level 2 Examples
-```javascript
-// Level 1 issues plus:
-
-// node.warn() statements
-node.warn("Debug message");  // ← This will be flagged
-
-// TODO/FIXME comments with colon
-// TODO: fix this later  // ← This will be flagged
-// FIXME: broken logic  // ← This will be flagged
-```
-
-### Level 3 Examples
-```javascript
-// Level 2 issues plus:
-
-// Hardcoded test values
-let testValue = "test";  // ← This will be flagged
-let debugVar = "debug";  // ← This will be flagged
-let tempVar = "temp";    // ← This will be flagged
-let number = 123;        // ← This will be flagged
-
-// Multiple empty lines
-let x = 1;
-
-
-let y = 2;  // ← The excessive empty lines above will be flagged
-```
-
-## Troubleshooting
-
-- **No status updates**: Ensure the analyzer node is properly deployed and started
-- **Missing detections**: Check that the scan interval is appropriate for your use case
-- **Performance issues**: Increase scan interval for large Node-RED installations
+1. Add the "Code Analyzer" node to your Node-RED flow
+2. Configure the detection settings in the node properties
+3. Deploy the flow to start monitoring
 
 ## Development
 
-### Project Structure
-```
-node-red-contrib-code-analyzer/
-├── package.json
-├── nodes/
-│   ├── analyzer.js          # Node runtime logic
-│   └── analyzer.html         # Editor UI
-├── lib/
-│   └── detector.js          # Core detection logic
-└── README.md
+### Prerequisites
+
+- Node.js 16.x or higher
+- npm 7.x or higher
+
+### Installation
+
+```bash
+git clone https://github.com/your-username/node-red-contrib-code-analyzer.git
+cd node-red-contrib-code-analyzer
+npm install
 ```
 
-### Adding New Detection Patterns
+### Running Tests
 
-Edit `lib/detector.js` to add new debugging patterns:
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run linter
+npm run lint
+```
+
+### Test Structure
+
+Our test suite follows the **AAA pattern** (Arrange, Act, Assert) and includes:
+
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test end-to-end functionality
+- **Edge Cases**: Handle malformed inputs and error conditions
+- **Performance Tests**: Ensure scalability with large codebases
+
+### Test Coverage
+
+We maintain **80%+ test coverage** across all modules:
+
+- `lib/detector.js` - Core detection logic
+- `lib/slack-notifier.js` - Notification system
+- `nodes/analyzer.js` - Node-RED integration
+
+### Continuous Integration
+
+GitHub Actions automatically runs:
+
+- ✅ **Multi-Node Testing**: Tests on Node.js 16, 18, and 20
+- 🔍 **Code Quality**: ESLint and formatting checks
+- 🛡️ **Security Audit**: Vulnerability scanning
+- 📊 **Coverage Reports**: Automatic coverage reporting
+- 🚀 **Build Validation**: Ensures deployability
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Add tests for your changes
+5. Ensure all tests pass (`npm test`)
+6. Commit your changes (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
+### Pull Request Requirements
+
+- ✅ All tests must pass
+- 📊 Coverage must remain above 80%
+- 🔍 Code must pass linting
+- 🛡️ No high-severity security vulnerabilities
+- 📝 Include relevant tests for new features
+
+## Configuration
+
+### Detection Levels
+
+- **Level 1**: Critical issues (top-level returns)
+- **Level 2**: Important issues (node.warn, TODO comments)
+- **Level 3**: Minor issues (hardcoded values, formatting)
+
+### Queue Monitoring
+
+- **Scan Interval**: Fixed at 3 seconds for optimal performance
+- **Message Frequency**: Configurable notification throttling
+- **Queue Selection**: Monitor all queues or specific selections
+- **Threshold Settings**: Customizable queue length alerts
+
+### Slack Integration
+
+Configure your Slack webhook URL to receive formatted alerts:
 
 ```javascript
-// Example: Detect alert statements
-if (/alert\s*\(/m.test(code)) {
-    issues.push("Alert statement found");
+{
+  "slackWebhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 }
 ```
 
 ## License
 
-ISC
+ISC License - see the [LICENSE](LICENSE) file for details.
 
-## Contributing
+## Support
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+- 📖 [Documentation](https://github.com/your-username/node-red-contrib-code-analyzer/wiki)
+- 🐛 [Issue Tracker](https://github.com/your-username/node-red-contrib-code-analyzer/issues)
+- 💬 [Discussions](https://github.com/your-username/node-red-contrib-code-analyzer/discussions)

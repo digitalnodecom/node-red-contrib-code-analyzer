@@ -11,10 +11,10 @@ module.exports = function(RED) {
         node.queueScanning = config.queueScanning || false;
         node.queueScanInterval = 3000; // Fixed at 3 seconds
         node.queueMessageFrequency = config.queueMessageFrequency || 1800000;
-        node.queueScanMode = config.queueScanMode || "all";
+        node.queueScanMode = config.queueScanMode || 'all';
         node.selectedQueueIds = config.selectedQueueIds || [];
         node.queueLengthThreshold = config.queueLengthThreshold || 0;
-        node.slackWebhookUrl = config.slackWebhookUrl || "";
+        node.slackWebhookUrl = config.slackWebhookUrl || '';
         
         // Track last message times for each queue
         node.lastMessageTimes = {};
@@ -62,23 +62,23 @@ module.exports = function(RED) {
                         
                         const functionNode = RED.nodes.getNode(nodeConfig.id);
                         if (functionNode && functionNode.status) {
-                            let statusColor = "blue";
-                            let text = "Minor debug traits noticed";
+                            let statusColor = 'blue';
+                            let text = 'Minor debug traits noticed';
                             
-                            const hasLevel1 = issues.some(issue => issue.type === "top-level-return");
-                            const hasLevel2 = issues.some(issue => issue.type === "node-warn" || issue.type === "todo-comment");
+                            const hasLevel1 = issues.some(issue => issue.type === 'top-level-return');
+                            const hasLevel2 = issues.some(issue => issue.type === 'node-warn' || issue.type === 'todo-comment');
                             
                             if (hasLevel1) {
-                                statusColor = "red";
-                                text = "Severe debugging traits."
+                                statusColor = 'red';
+                                text = 'Severe debugging traits.';
                             } else if (hasLevel2) {
-                                statusColor = "yellow";
-                                text = "Important debugging traits."
+                                statusColor = 'yellow';
+                                text = 'Important debugging traits.';
                             }
                             
                             functionNode.status({
                                 fill: statusColor,
-                                shape: "dot",
+                                shape: 'dot',
                                 text
                             });
                         }
@@ -90,8 +90,8 @@ module.exports = function(RED) {
             
             if (totalIssues > 0) {
                 node.status({
-                    fill: "yellow",
-                    shape: "dot",
+                    fill: 'yellow',
+                    shape: 'dot',
                     text: `Found ${totalIssues} debugging traits in ${nodesWithIssues} nodes`
                 });
                 
@@ -103,9 +103,9 @@ module.exports = function(RED) {
                 }
             } else {
                 node.status({
-                    fill: "green",
-                    shape: "dot",
-                    text: "No debugging traits found"
+                    fill: 'green',
+                    shape: 'dot',
+                    text: 'No debugging traits found'
                 });
             }
         }
@@ -116,22 +116,19 @@ module.exports = function(RED) {
             const currentFlowId = node.z;
             
             RED.nodes.eachNode(function (nodeConfig) {
-                if (nodeConfig.type === 'delay' && nodeConfig.pauseType == "rate" && nodeConfig.z === currentFlowId) {
+                if (nodeConfig.type === 'delay' && nodeConfig.pauseType == 'rate' && nodeConfig.z === currentFlowId) {
                     // Check if we should monitor this specific queue
-                    const shouldMonitor = node.queueScanMode === "all" || 
-                                        (node.queueScanMode === "specific" && node.selectedQueueIds.includes(nodeConfig.id));
+                    const shouldMonitor = node.queueScanMode === 'all' || 
+                                        (node.queueScanMode === 'specific' && node.selectedQueueIds.includes(nodeConfig.id));
                     
                     if (shouldMonitor) {
                         const delayNode = RED.nodes.getNode(nodeConfig.id);
                         
                         if (delayNode) {
                             const queueLength = delayNode?.buffer.length;
-                            const droppedCount = delayNode.droppedMsgs;
-                            const isDropping = delayNode.drop;
 
                             if (queueLength > node.queueLengthThreshold) {
                                 const now = Date.now();
-                                const lastMessageTime = node.lastMessageTimes[nodeConfig.id] || 0;
                                 
                                 // Add to pending alerts for grouped messaging
                                 if (queueLength > node.queueLengthThreshold) {
@@ -211,5 +208,5 @@ module.exports = function(RED) {
         setTimeout(startScanning, 1000);
     }
     
-    RED.nodes.registerType("code-analyzer", CodeAnalyzer);
+    RED.nodes.registerType('code-analyzer', CodeAnalyzer);
 };
