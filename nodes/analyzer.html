@@ -250,105 +250,290 @@
             return false;
         }
 
-        function detectDebuggingTraitsInBrowser(code, level = 1) {
-            const issues = [];
+        // AST-based detection for browser using Acorn parser
+        async function detectDebuggingTraitsInBrowser(code, level = 1) {
             const lines = code.split('\n');
             
             // Parse ignore directives
             const { ignoreRegions, ignoreLines, ignoreNextLines } = parseIgnoreDirectivesBrowser(lines);
             
-            if (level >= 1) {
-                let braceDepth = 0;
-                let controlStructureStack = [];
-                let pendingControlStructures = [];
+            // Try to use AST parsing (fallback to regex if AST fails)
+            try {
+                const result = detectWithAST(code, level, ignoreRegions, ignoreLines, ignoreNextLines);
                 
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    const trimmed = line.trim();
-                    const lineNumber = i + 1;
-                    
-                    const openBraces = (line.match(/\{/g) || []).length;
-                    const closeBraces = (line.match(/\}/g) || []).length;
-                    
-                    // Check if this line contains a control structure keyword
-                    const controlStructurePattern = /\b(if|else|for|while|do|switch|try|catch|finally)\b/i;
-                    if (controlStructurePattern.test(trimmed)) {
-                        pendingControlStructures.push(true);
+                // If result is a promise (when loading Acorn), await it
+                if (result && typeof result.then === 'function') {
+                    return await result;
+                } else {
+                    return result;
+                }
+            } catch (error) {
+                console.warn('Browser AST parsing failed:', error.message);
+                return [];
+            }
+        }
+        
+        function detectWithAST(code, level, ignoreRegions, ignoreLines, ignoreNextLines) {
+            const issues = [];
+            
+            // Load Acorn parser dynamically if not available
+            if (typeof window.acorn === 'undefined') {
+                // Try to load Acorn from CDN
+                return new Promise((resolve) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://unpkg.com/acorn@8.11.3/dist/acorn.js';
+                    script.onload = () => {
+                        resolve(detectWithASTSync(code, level, ignoreRegions, ignoreLines, ignoreNextLines));
+                    };
+                    script.onerror = () => {
+                        console.warn('Failed to load Acorn parser from CDN');
+                        resolve([]);
+                    };
+                    document.head.appendChild(script);
+                });
+            }
+            
+            return detectWithASTSync(code, level, ignoreRegions, ignoreLines, ignoreNextLines);
+        }
+        
+        function detectWithASTSync(code, level, ignoreRegions, ignoreLines, ignoreNextLines) {
+            const issues = [];
+            
+            let ast;
+            try {
+                // Try parsing as script first
+                try {
+                    ast = window.acorn.parse(code, {
+                        ecmaVersion: 2020,
+                        allowReturnOutsideFunction: true,
+                        locations: true
+                    });
+                } catch (scriptError) {
+                    // If script parsing fails due to top-level return, wrap in function
+                    if (scriptError.message.includes('return')) {
+                        const wrappedCode = `function nodeRedWrapper() {\n${code}\n}`;
+                        ast = window.acorn.parse(wrappedCode, {
+                            ecmaVersion: 2020,
+                            locations: true
+                        });
+                        // Adjust line numbers for wrapped code
+                        adjustLineNumbersInAST(ast, -1);
+                    } else {
+                        throw scriptError;
                     }
+                }
+            } catch (error) {
+                throw error; // Will fallback to regex
+            }
+            
+            // Traverse AST to find issues
+            function traverse(node, parent = null) {
+                if (!node || typeof node !== 'object' || !node.type) return;
+                
+                const nodeLineNumber = node.loc ? node.loc.start.line : null;
+                
+                // Skip if this line should be ignored
+                if (nodeLineNumber && shouldIgnoreLineBrowser(nodeLineNumber, ignoreRegions, ignoreLines, ignoreNextLines)) {
+                    return;
+                }
+                
+                // Level 1: Detect top-level return statements (ONLY empty returns)
+                if (level >= 1 && node.type === 'ReturnStatement') {
+                    // IMPORTANT: Only flag empty returns (debugging artifacts), not returns with values
+                    const isEmptyReturn = !node.argument || node.argument === null;
                     
-                    // When we encounter opening braces, check if we have pending control structures
-                    if (openBraces > 0) {
-                        for (let j = 0; j < openBraces; j++) {
-                            // Check if this is an arrow function (skip it for control structures)
-                            const isArrowFunction = /=>\s*\{/.test(trimmed);
-                            
-                            // If we have pending control structures and this is not an arrow function
-                            if (pendingControlStructures.length > 0 && !isArrowFunction) {
-                                controlStructureStack.push(braceDepth + 1 + j);
-                                pendingControlStructures.pop();
-                            }
-                            // Also check if the control structure and brace are on the same line
-                            else if (controlStructurePattern.test(trimmed)) {
-                                controlStructureStack.push(braceDepth + 1 + j);
-                            }
-                        }
-                    }
-                    
-                    // Remove control structures from stack when we exit their blocks
-                    if (closeBraces > 0) {
-                        for (let j = 0; j < closeBraces; j++) {
-                            const exitDepth = braceDepth + 1 - j;
-                            const stackIndex = controlStructureStack.indexOf(exitDepth);
-                            if (stackIndex !== -1) {
-                                controlStructureStack.splice(stackIndex, 1);
-                            }
-                        }
-                    }
-                    
-                    if (/^\s*return\s*;?\s*$/.test(trimmed)) {
-                        // Only flag as top-level return if:
-                        // 1. braceDepth === 0 (raw function body like Node-RED)
-                        // 2. braceDepth === 1 AND not in any control structure (function wrapper like tests)
-                        const isInControlStructure = controlStructureStack.length > 0;
-                        const isTopLevelReturn = braceDepth === 0 || (braceDepth === 1 && !isInControlStructure);
+                    if (isEmptyReturn) {
+                        // Check if this return is TRULY at the top level (not inside any control structures)
+                        let currentNode = node;
+                        let isInNestedFunction = false;
+                        let isInControlStructure = false;
+                        let isAtTopLevel = false;
                         
-                        if (isTopLevelReturn) {
-                            // Check if this line should be ignored
-                            if (!shouldIgnoreLineBrowser(lineNumber, ignoreRegions, ignoreLines, ignoreNextLines)) {
+                        while (currentNode && currentNode.parent) {
+                            const parentNode = currentNode.parent;
+                            
+                            // If we find a function declaration/expression that's not our wrapper, we're nested
+                            if ((parentNode.type === 'FunctionDeclaration' || 
+                                 parentNode.type === 'FunctionExpression' || 
+                                 parentNode.type === 'ArrowFunctionExpression') &&
+                                !(parentNode.type === 'FunctionDeclaration' && 
+                                  parentNode.id && parentNode.id.name === 'nodeRedWrapper')) {
+                                isInNestedFunction = true;
+                                break;
+                            }
+                            
+                            // Check if we're inside any control structure
+                            if (parentNode.type === 'IfStatement' || 
+                                parentNode.type === 'ForStatement' || 
+                                parentNode.type === 'WhileStatement' || 
+                                parentNode.type === 'DoWhileStatement' || 
+                                parentNode.type === 'ForInStatement' || 
+                                parentNode.type === 'ForOfStatement' || 
+                                parentNode.type === 'SwitchStatement' || 
+                                parentNode.type === 'TryStatement' || 
+                                parentNode.type === 'CatchClause' || 
+                                parentNode.type === 'WithStatement') {
+                                isInControlStructure = true;
+                            }
+                            
+                            // If we reach the Program or our wrapper function, we're at top level
+                            if (parentNode.type === 'Program' || 
+                                (parentNode.type === 'FunctionDeclaration' && 
+                                 parentNode.id && parentNode.id.name === 'nodeRedWrapper')) {
+                                isAtTopLevel = true;
+                                break;
+                            }
+                            
+                            currentNode = parentNode;
+                        }
+                        
+                        // Only flag empty returns that are at top level AND not in control structures AND not in nested functions
+                        if (isAtTopLevel && !isInControlStructure && !isInNestedFunction) {
+                            if (nodeLineNumber) {
                                 issues.push({
                                     type: "top-level-return",
                                     message: "Remove this top-level return statement",
-                                    line: lineNumber,
-                                    column: line.indexOf('return') + 1,
-                                    endColumn: line.indexOf('return') + 'return'.length + 1,
+                                    line: nodeLineNumber,
+                                    column: node.loc.start.column + 1,
+                                    endColumn: node.loc.end.column + 1,
                                     severity: "warning"
                                 });
                             }
                         }
                     }
-                    
-                    braceDepth += openBraces - closeBraces;
                 }
-            }
-            
-            if (level >= 2) {
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    const lineNumber = i + 1;
+                
+                // Level 2: Detect console.log, node.warn, and debugger statements
+                if (level >= 2) {
+                    // Detect console.log and console.* calls
+                    if (node.type === 'CallExpression' && 
+                        node.callee && node.callee.type === 'MemberExpression' &&
+                        node.callee.object && node.callee.object.name === 'console') {
+                        
+                        if (nodeLineNumber) {
+                            issues.push({
+                                type: 'console-log',
+                                message: `Remove this console.${node.callee.property.name}() debugging statement`,
+                                line: nodeLineNumber,
+                                column: node.loc.start.column + 1,
+                                endColumn: node.loc.end.column + 1,
+                                severity: 'info'
+                            });
+                        }
+                    }
                     
-                    const warnMatch = line.match(/node\.warn\s*\(/);
-                    if (warnMatch && !shouldIgnoreLineBrowser(lineNumber, ignoreRegions, ignoreLines, ignoreNextLines)) {
-                        issues.push({
-                            type: "node-warn",
-                            message: "Remove this node.warn() debugging statement",
-                            line: lineNumber,
-                            column: warnMatch.index + 1,
-                            endColumn: warnMatch.index + warnMatch[0].length + 1,
-                            severity: "info"
-                        });
+                    // Detect node.warn calls
+                    if (node.type === 'CallExpression' && 
+                        node.callee && node.callee.type === 'MemberExpression' &&
+                        node.callee.object && node.callee.object.name === 'node' &&
+                        node.callee.property && node.callee.property.name === 'warn') {
+                        
+                        if (nodeLineNumber) {
+                            issues.push({
+                                type: 'node-warn',
+                                message: 'Remove this node.warn() debugging statement',
+                                line: nodeLineNumber,
+                                column: node.loc.start.column + 1,
+                                endColumn: node.loc.end.column + 1,
+                                severity: 'info'
+                            });
+                        }
+                    }
+                    
+                    // Detect debugger statements
+                    if (node.type === 'DebuggerStatement') {
+                        if (nodeLineNumber) {
+                            issues.push({
+                                type: 'debugger-statement',
+                                message: 'Remove this debugger statement',
+                                line: nodeLineNumber,
+                                column: node.loc.start.column + 1,
+                                endColumn: node.loc.end.column + 1,
+                                severity: 'warning'
+                            });
+                        }
                     }
                 }
                 
+                // Level 3: Detect hardcoded test values
+                if (level >= 3) {
+                    // Detect hardcoded string assignments
+                    if (node.type === 'AssignmentExpression' && 
+                        node.right && node.right.type === 'Literal' && 
+                        typeof node.right.value === 'string') {
+                        
+                        const value = node.right.value.toLowerCase();
+                        if (value === 'test' || value === 'debug' || value === 'temp') {
+                            if (nodeLineNumber) {
+                                issues.push({
+                                    type: `hardcoded-${value}`,
+                                    message: `Remove hardcoded ${value} value`,
+                                    line: nodeLineNumber,
+                                    column: node.right.loc.start.column + 1,
+                                    endColumn: node.right.loc.end.column + 1,
+                                    severity: 'warning'
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Detect hardcoded variable declarations
+                    if (node.type === 'VariableDeclarator' && 
+                        node.init && node.init.type === 'Literal') {
+                        
+                        if (typeof node.init.value === 'string') {
+                            const value = node.init.value.toLowerCase();
+                            if (value === 'test' || value === 'debug' || value === 'temp') {
+                                if (nodeLineNumber) {
+                                    issues.push({
+                                        type: `hardcoded-${value}`,
+                                        message: `Remove hardcoded ${value} value`,
+                                        line: nodeLineNumber,
+                                        column: node.init.loc.start.column + 1,
+                                        endColumn: node.init.loc.end.column + 1,
+                                        severity: 'warning'
+                                    });
+                                }
+                            }
+                        } else if (typeof node.init.value === 'number' && node.init.value === 123) {
+                            if (nodeLineNumber) {
+                                issues.push({
+                                    type: 'hardcoded-number',
+                                    message: 'Remove hardcoded test number',
+                                    line: nodeLineNumber,
+                                    column: node.init.loc.start.column + 1,
+                                    endColumn: node.init.loc.end.column + 1,
+                                    severity: 'warning'
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                // Recursively traverse child nodes
+                for (let key in node) {
+                    if (node.hasOwnProperty(key) && key !== 'parent' && key !== 'loc' && key !== 'range') {
+                        let child = node[key];
+                        if (Array.isArray(child)) {
+                            child.forEach(item => {
+                                if (item && typeof item === 'object' && item.type) {
+                                    item.parent = node;
+                                    traverse(item, node);
+                                }
+                            });
+                        } else if (child && typeof child === 'object' && child.type) {
+                            child.parent = node;
+                            traverse(child, node);
+                        }
+                    }
+                }
+            }
+            
+            traverse(ast);
+            
+            // Level 2: Check for TODO/FIXME comments (still needs line-by-line analysis)
+            if (level >= 2) {
+                const lines = code.split('\n');
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const lineNumber = i + 1;
@@ -356,82 +541,26 @@
                     const todoMatch = line.match(/(TODO|FIXME):/i);
                     if (todoMatch && !shouldIgnoreLineBrowser(lineNumber, ignoreRegions, ignoreLines, ignoreNextLines)) {
                         issues.push({
-                            type: "todo-comment",
+                            type: 'todo-comment',
                             message: `${todoMatch[1].toUpperCase()} comment found - consider resolving`,
                             line: lineNumber,
                             column: todoMatch.index + 1,
                             endColumn: line.length + 1,
-                            severity: "info"
+                            severity: 'info'
                         });
                     }
                 }
             }
             
+            // Level 3: Check for multiple empty lines (still needs line-by-line analysis)
             if (level >= 3) {
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    const lineNumber = i + 1;
-                    
-                    // Skip if line should be ignored
-                    if (shouldIgnoreLineBrowser(lineNumber, ignoreRegions, ignoreLines, ignoreNextLines)) {
-                        continue;
-                    }
-                    
-                    const testMatch = line.match(/=\s*["']test["']/);
-                    const debugMatch = line.match(/=\s*["']debug["']/);
-                    const tempMatch = line.match(/=\s*["']temp["']/);
-                    const numberMatch = line.match(/=\s*123[^0-9]/);
-                    
-                    if (testMatch) {
-                        issues.push({
-                            type: "hardcoded-test",
-                            message: "Remove hardcoded test value",
-                            line: lineNumber,
-                            column: testMatch.index + 1,
-                            endColumn: testMatch.index + testMatch[0].length + 1,
-                            severity: "warning"
-                        });
-                    }
-                    
-                    if (debugMatch) {
-                        issues.push({
-                            type: "hardcoded-debug",
-                            message: "Remove hardcoded debug value",
-                            line: lineNumber,
-                            column: debugMatch.index + 1,
-                            endColumn: debugMatch.index + debugMatch[0].length + 1,
-                            severity: "warning"
-                        });
-                    }
-                    
-                    if (tempMatch) {
-                        issues.push({
-                            type: "hardcoded-temp",
-                            message: "Remove hardcoded temp value",
-                            line: lineNumber,
-                            column: tempMatch.index + 1,
-                            endColumn: tempMatch.index + tempMatch[0].length + 1,
-                            severity: "warning"
-                        });
-                    }
-                    
-                    if (numberMatch) {
-                        issues.push({
-                            type: "hardcoded-number",
-                            message: "Remove hardcoded test number",
-                            line: lineNumber,
-                            column: numberMatch.index + 1,
-                            endColumn: numberMatch.index + numberMatch[0].length + 1,
-                            severity: "warning"
-                        });
-                    }
-                }
-                
+                const lines = code.split('\n');
                 let consecutiveEmptyLines = 0;
                 let emptyLineStart = -1;
                 
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
+                    const lineNumber = i + 1;
                     
                     if (line.trim() === '') {
                         if (consecutiveEmptyLines === 0) {
@@ -454,13 +583,13 @@
                             
                             if (!shouldIgnoreRegion) {
                                 issues.push({
-                                    type: "multiple-empty-lines",
+                                    type: 'multiple-empty-lines',
                                     message: `Remove excessive empty lines (${consecutiveEmptyLines} consecutive empty lines)`,
                                     line: regionStart,
                                     endLine: regionEnd,
                                     column: 1,
-                                    endColumn: 100,
-                                    severity: "info"
+                                    endColumn: 1,
+                                    severity: 'info'
                                 });
                             }
                         }
@@ -483,13 +612,13 @@
                     
                     if (!shouldIgnoreRegion) {
                         issues.push({
-                            type: "multiple-empty-lines",
+                            type: 'multiple-empty-lines',
                             message: `Remove excessive empty lines (${consecutiveEmptyLines} consecutive empty lines)`,
                             line: regionStart,
                             endLine: regionEnd,
                             column: 1,
-                            endColumn: 100,
-                            severity: "info"
+                            endColumn: 1,
+                            severity: 'info'
                         });
                     }
                 }
@@ -497,6 +626,27 @@
             
             return issues;
         }
+        
+        function adjustLineNumbersInAST(node, offset) {
+            if (!node || typeof node !== 'object') return;
+            
+            if (node.loc && node.loc.start) {
+                node.loc.start.line += offset;
+                node.loc.end.line += offset;
+            }
+            
+            for (let key in node) {
+                if (node.hasOwnProperty(key)) {
+                    let child = node[key];
+                    if (Array.isArray(child)) {
+                        child.forEach(item => adjustLineNumbersInAST(item, offset));
+                    } else if (child && typeof child === 'object') {
+                        adjustLineNumbersInAST(child, offset);
+                    }
+                }
+            }
+        }
+        
         
         if (RED.editor.codeEditor) {
             const originalCreateEditor = RED.editor.codeEditor.create;
@@ -522,39 +672,44 @@
                                                         
                             const currentCode = options.value || '';
                             
-                            const errors = detectDebuggingTraitsInBrowser(currentCode, detectionLevel);
-                            
-                            if (errors.length > 0) {
-                                setTimeout(() => {
-                                    monaco.editor.getEditors().forEach(editorInstance => {
-                                        const markers = errors.map(error => ({
-                                            startLineNumber: error.line,
-                                            startColumn: error.column,
-                                            endLineNumber: error.endLine || error.line,
-                                            endColumn: error.endColumn,
-                                            message: error.message,
-                                            severity: error.severity === 'warning' ? 
-                                                monaco.MarkerSeverity.Warning : 
-                                                monaco.MarkerSeverity.Info,
-                                            source: 'Debug Analyzer'
-                                        }));
-                                        
-                                        monaco.editor.setModelMarkers(editorInstance.getModel(), 'debug-checker', markers);
-                                        
-                                        const decorations = errors.map(error => ({
-                                            range: new monaco.Range(error.line, 1, error.endLine || error.line, 1),
-                                            options: {
-                                                isWholeLine: true,
-                                                className: error.severity === 'warning' ? 
-                                                    'highlighted-line-error' : 
-                                                    'highlighted-line'
-                                            }
-                                        }));
-                                        
-                                        editorInstance.deltaDecorations([], decorations);
-                                    });
-                                }, 100);
-                            }
+                            // Use async/await for detectDebuggingTraitsInBrowser
+                            detectDebuggingTraitsInBrowser(currentCode, detectionLevel)
+                                .then(errors => {
+                                    if (errors.length > 0) {
+                                        setTimeout(() => {
+                                            monaco.editor.getEditors().forEach(editorInstance => {
+                                                const markers = errors.map(error => ({
+                                                    startLineNumber: error.line,
+                                                    startColumn: error.column,
+                                                    endLineNumber: error.endLine || error.line,
+                                                    endColumn: error.endColumn,
+                                                    message: error.message,
+                                                    severity: error.severity === 'warning' ? 
+                                                        monaco.MarkerSeverity.Warning : 
+                                                        monaco.MarkerSeverity.Info,
+                                                    source: 'Debug Analyzer'
+                                                }));
+                                                
+                                                monaco.editor.setModelMarkers(editorInstance.getModel(), 'debug-checker', markers);
+                                                
+                                                const decorations = errors.map(error => ({
+                                                    range: new monaco.Range(error.line, 1, error.endLine || error.line, 1),
+                                                    options: {
+                                                        isWholeLine: true,
+                                                        className: error.severity === 'warning' ? 
+                                                            'highlighted-line-error' : 
+                                                            'highlighted-line'
+                                                    }
+                                                }));
+                                                
+                                                editorInstance.deltaDecorations([], decorations);
+                                            });
+                                        }, 100);
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error in Monaco editor highlighting:', error);
+                                });
                         }
                     }
                     
