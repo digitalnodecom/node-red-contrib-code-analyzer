@@ -34,7 +34,6 @@
     "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
     "collectCoverageFrom": [
       "lib/**/*.js",
-      "nodes/**/*.js",
       "!**/node_modules/**"
     ],
     "coverageDirectory": "coverage",
