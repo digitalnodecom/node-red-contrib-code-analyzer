@@ -22,18 +22,41 @@
         },
         oneditprepare: function() {
             const node = this;
+            
+            // Initialize tabs
+            const tabs = RED.tabs.create({
+                id: "node-input-tabs",
+                onchange: function(tab) {
+                    $("#node-input-tabs-content").children().hide();
+                    $("#" + tab.id).show();
+                }
+            });
+            
+            tabs.addTab({
+                id: "general-tab",
+                label: "General"
+            });
+            
+            tabs.addTab({
+                id: "code-analysis-tab",
+                label: "Code Analysis"
+            });
+            
+            tabs.addTab({
+                id: "queue-monitoring-tab",
+                label: "Queue Monitoring"
+            });
+            
+            // Queue monitoring logic
             const queueScanningCheckbox = $('#node-input-queueScanning');
             const queueScanModeSelect = $('#node-input-queueScanMode');
             const selectedQueueRow = $('.form-row-selectedQueue');
             const queueThresholdRow = $('.form-row-queueThreshold');
-            const slackRow = $('.form-row-slack');
             
             function updateQueueVisibility() {
                 const isQueueScanningEnabled = queueScanningCheckbox.prop('checked');
-                $('.form-row-queueInterval').toggle(isQueueScanningEnabled);
                 $('.form-row-queueMode').toggle(isQueueScanningEnabled);
                 queueThresholdRow.toggle(isQueueScanningEnabled);
-                slackRow.toggle(isQueueScanningEnabled);
                 
                 if (isQueueScanningEnabled) {
                     const isSpecificQueue = queueScanModeSelect.val() === 'specific';
@@ -389,6 +412,11 @@
         align-self: flex-start;
     }
     
+    .form-row-stacked input[type="checkbox"] {
+        width: auto;
+        align-self: flex-start;
+    }
+    
     .form-row-grouped .form-col .form-tips {
         margin-top: 3px;
         font-size: 0.9em;
@@ -397,74 +425,88 @@
 </style>
 
 <script type="text/html" data-template-name="code-analyzer">
-    <div class="form-row-stacked">
-        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
-        <input type="text" id="node-input-name" placeholder="Code Analyzer">
+    <div class="form-row">
+        <ul id="node-input-tabs"></ul>
     </div>
     
-    <div class="form-row-grouped">
-        <div class="form-col">
-            <label for="node-input-scanInterval"><i class="fa fa-clock-o"></i> Scan Interval (ms)</label>
-            <input type="number" id="node-input-scanInterval" placeholder="30000">
-            <div class="form-tips">Set to 0 to disable automatic scanning</div>
+    <div id="node-input-tabs-content" style="min-height: 400px;">
+        <!-- General Tab -->
+        <div id="general-tab" style="display: none;">
+            <div class="form-row-stacked">
+                <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+                <input type="text" id="node-input-name" placeholder="Code Analyzer">
+            </div>
+            
+            <div class="form-row-stacked">
+                <label for="node-input-queueMessageFrequency"><i class="fa fa-bell"></i> Message Frequency (ms)</label>
+                <input type="number" id="node-input-queueMessageFrequency" placeholder="1800000">
+                <div class="form-tips">How often to send warning messages (default: 30min)</div>
+            </div>
+            
+            <div class="form-row-stacked">
+                <label for="node-input-slackWebhookUrl"><i class="fa fa-slack"></i> Slack Webhook URL</label>
+                <input type="text" id="node-input-slackWebhookUrl" placeholder="https://hooks.slack.com/services/...">
+                <div class="form-tips">Enter your Slack webhook URL to send notifications (leave empty to use node.warn)</div>
+            </div>
+            
+            <div class="form-row-stacked">
+                <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
+                <input type="checkbox" id="node-input-autoStart" checked>
+                <div class="form-tips">Start scanning automatically when deployed</div>
+            </div>
         </div>
-        <div class="form-col">
-            <label for="node-input-detectionLevel"><i class="fa fa-level-up"></i> Detection Level</label>
-            <select id="node-input-detectionLevel">
-                <option value="1">Level 1</option>
-                <option value="2">Level 2</option>
-                <option value="3">Level 3</option>
-            </select>
-            <div class="form-tips">Choose the level of debugging detection strictness</div>
+        
+        <!-- Code Analysis Tab -->
+        <div id="code-analysis-tab" style="display: none;">
+            <div class="form-row-grouped">
+                <div class="form-col">
+                    <label for="node-input-scanInterval"><i class="fa fa-clock-o"></i> Scan Interval (ms)</label>
+                    <input type="number" id="node-input-scanInterval" placeholder="30000">
+                    <div class="form-tips">Set to 0 to disable automatic scanning</div>
+                </div>
+                <div class="form-col">
+                    <label for="node-input-detectionLevel"><i class="fa fa-level-up"></i> Detection Level</label>
+                    <select id="node-input-detectionLevel">
+                        <option value="1">Level 1</option>
+                        <option value="2">Level 2</option>
+                        <option value="3">Level 3</option>
+                    </select>
+                    <div class="form-tips">Choose the level of debugging detection strictness</div>
+                </div>
+            </div>
         </div>
-    </div>
-    
-    <div class="form-row-grouped">
-        <div class="form-col">
-            <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
-            <input type="checkbox" id="node-input-autoStart" checked>
-            <div class="form-tips">Start scanning automatically when deployed</div>
+        
+        <!-- Queue Monitoring Tab -->
+        <div id="queue-monitoring-tab" style="display: none;">
+            <div class="form-row-stacked">
+                <label for="node-input-queueScanning"><i class="fa fa-list"></i> Queue Scanning</label>
+                <input type="checkbox" id="node-input-queueScanning">
+                <div class="form-tips">Enable monitoring of delay node queues</div>
+            </div>
+            
+            <div class="form-row-stacked form-row-queueMode" style="display: none;">
+                <label for="node-input-queueScanMode"><i class="fa fa-filter"></i> Queue Scan Mode</label>
+                <select id="node-input-queueScanMode">
+                    <option value="all">All Queues</option>
+                    <option value="specific">Specific Queue</option>
+                </select>
+                <div class="form-tips">Choose to monitor all queues or a specific one</div>
+            </div>
+            
+            <div class="form-row-stacked form-row-selectedQueue" style="display: none;">
+                <label><i class="fa fa-crosshairs"></i> Select Queues</label>
+                <div id="queue-checkbox-container" style="max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; margin-top: 5px; width: 100%; box-sizing: border-box;">
+                    <!-- Queue checkboxes will be populated here -->
+                </div>
+                <div class="form-tips">Choose which specific queues to monitor</div>
+            </div>
+            
+            <div class="form-row-stacked form-row-queueThreshold" style="display: none;">
+                <label for="node-input-queueLengthThreshold"><i class="fa fa-exclamation-triangle"></i> Queue Length Threshold</label>
+                <input type="number" id="node-input-queueLengthThreshold" placeholder="0" min="0">
+                <div class="form-tips">Only warn when queue length exceeds this value (0 = warn on any queue length)</div>
+            </div>
         </div>
-        <div class="form-col">
-            <label for="node-input-queueScanning"><i class="fa fa-list"></i> Queue Scanning</label>
-            <input type="checkbox" id="node-input-queueScanning">
-            <div class="form-tips">Enable monitoring of delay node queues</div>
-        </div>
-    </div>
-    
-    <div class="form-row-stacked form-row-queueInterval" style="display: none;">
-        <label for="node-input-queueMessageFrequency"><i class="fa fa-bell"></i> Message Frequency (ms)</label>
-        <input type="number" id="node-input-queueMessageFrequency" placeholder="1800000">
-        <div class="form-tips">How often to send warning messages (default: 30min)</div>
-    </div>
-    
-    <div class="form-row-stacked form-row-queueMode" style="display: none;">
-        <label for="node-input-queueScanMode"><i class="fa fa-filter"></i> Queue Scan Mode</label>
-        <select id="node-input-queueScanMode">
-            <option value="all">All Queues</option>
-            <option value="specific">Specific Queue</option>
-        </select>
-        <div class="form-tips">Choose to monitor all queues or a specific one</div>
-    </div>
-    
-    <div class="form-row-stacked form-row-selectedQueue" style="display: none;">
-        <label><i class="fa fa-crosshairs"></i> Select Queues</label>
-        <div id="queue-checkbox-container" style="max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; margin-top: 5px; width: 100%; box-sizing: border-box;">
-            <!-- Queue checkboxes will be populated here -->
-        </div>
-        <div class="form-tips">Choose which specific queues to monitor</div>
-    </div>
-    
-    <div class="form-row-stacked form-row-queueThreshold" style="display: none;">
-        <label for="node-input-queueLengthThreshold"><i class="fa fa-exclamation-triangle"></i> Queue Length Threshold</label>
-        <input type="number" id="node-input-queueLengthThreshold" placeholder="0" min="0">
-        <div class="form-tips">Only warn when queue length exceeds this value (0 = warn on any queue length)</div>
-    </div>
-    
-    <div class="form-row-stacked form-row-slack" style="display: none;">
-        <label for="node-input-slackWebhookUrl"><i class="fa fa-slack"></i> Slack Webhook URL</label>
-        <input type="text" id="node-input-slackWebhookUrl" placeholder="https://hooks.slack.com/services/...">
-        <div class="form-tips">Enter your Slack webhook URL to send notifications (leave empty to use node.warn)</div>
     </div>
 </script>
 
