@@ -49,11 +49,14 @@ jobs:
           const fs = require('fs');
           const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
           // Focus on lib/ directory coverage (core business logic)
-          const libDetector = coverage['lib/detector.js'];
-          const libSlack = coverage['lib/slack-notifier.js'];
+          // Find files ending with lib/detector.js and lib/slack-notifier.js
+          const detectorKey = Object.keys(coverage).find(key => key.endsWith('lib/detector.js'));
+          const slackKey = Object.keys(coverage).find(key => key.endsWith('lib/slack-notifier.js'));
           
-          if (libDetector && libSlack) {
-            const avgLibCoverage = Math.round((libDetector.lines.pct + libSlack.lines.pct) / 2);
+          if (detectorKey && slackKey) {
+            const detectorCoverage = coverage[detectorKey].lines.pct;
+            const slackCoverage = coverage[slackKey].lines.pct;
+            const avgLibCoverage = Math.round((detectorCoverage + slackCoverage) / 2);
             console.log(avgLibCoverage);
           } else {
             console.log(Math.round(coverage.total.lines.pct));
@@ -213,10 +216,12 @@ jobs:
             coverage = Math.round(coverageData.total.lines.pct) + '%';
             
             // Calculate lib/ directory coverage
-            const libDetector = coverageData['lib/detector.js'];
-            const libSlack = coverageData['lib/slack-notifier.js'];
-            if (libDetector && libSlack) {
-              const avgLibCoverage = Math.round((libDetector.lines.pct + libSlack.lines.pct) / 2);
+            const detectorKey = Object.keys(coverageData).find(key => key.endsWith('lib/detector.js'));
+            const slackKey = Object.keys(coverageData).find(key => key.endsWith('lib/slack-notifier.js'));
+            if (detectorKey && slackKey) {
+              const detectorCoverage = coverageData[detectorKey].lines.pct;
+              const slackCoverage = coverageData[slackKey].lines.pct;
+              const avgLibCoverage = Math.round((detectorCoverage + slackCoverage) / 2);
               libCoverage = avgLibCoverage + '%';
             }
           } catch (error) {
