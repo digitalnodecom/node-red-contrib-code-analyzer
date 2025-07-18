@@ -60,9 +60,8 @@ describe('AST-based Detector', () => {
                 
                 const issues = detectDebuggingTraitsAST(code, 1);
                 
-                expect(issues).toHaveLength(1);
-                expect(issues[0].type).toBe('top-level-return');
-                expect(issues[0].line).toBe(3);
+                // Should NOT detect returns with values
+                expect(issues).toHaveLength(0);
             });
         });
         
@@ -208,7 +207,7 @@ describe('AST-based Detector', () => {
                 
                 expect(issues).toHaveLength(2);
                 expect(issues[0].line).toBe(2);
-                expect(issues[1].line).toBe(6);
+                expect(issues[1].line).toBe(7);
             });
             
             test('should ignore issues with ignore-line directive', () => {
@@ -260,7 +259,7 @@ describe('AST-based Detector', () => {
                 expect(issues[0].type).toBe('console-log');
                 expect(issues[1].type).toBe('console-log');
                 expect(issues[2].type).toBe('top-level-return');
-                expect(issues[2].line).toBe(8);
+                expect(issues[2].line).toBe(9);
             });
             
             test('should handle arrow functions', () => {

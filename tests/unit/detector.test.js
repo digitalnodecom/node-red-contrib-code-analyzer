@@ -391,15 +391,16 @@ describe('Detector - detectDebuggingTraits', () => {
         
         test('should return correct line numbers', () => {
             // Arrange
-            const code = `line 1
-line 2
+            const code = `const x = 1;
+const y = 2;
 node.warn("debug");
-line 4`;
+const z = 4;`;
             
             // Act
             const issues = detectDebuggingTraits(code, 2);
             
             // Assert
+            expect(issues).toHaveLength(1);
             expect(issues[0].line).toBe(3);
         });
         
