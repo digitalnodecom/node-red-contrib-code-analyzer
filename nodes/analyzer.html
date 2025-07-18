@@ -8,7 +8,8 @@
             detectionLevel: {value: 1, required: true, validate: RED.validators.number()},
             autoStart: {value: true},
             queueScanning: {value: false},
-            queueScanInterval: {value: 30000, required: true, validate: RED.validators.number()},
+            queueScanInterval: {value: 3000, required: true, validate: RED.validators.number()},
+            queueMessageFrequency: {value: 1800000, required: true, validate: RED.validators.number()},
             queueScanMode: {value: "all"},
             selectedQueueIds: {value: []},
             queueLengthThreshold: {value: 0, required: true, validate: RED.validators.number()}
@@ -20,6 +21,7 @@
             return this.name || "Code Analyzer";
         },
         oneditprepare: function() {
+            const node = this;
             const queueScanningCheckbox = $('#node-input-queueScanning');
             const queueScanModeSelect = $('#node-input-queueScanMode');
             const selectedQueueRow = $('.form-row-selectedQueue');
@@ -36,20 +38,29 @@
                     selectedQueueRow.toggle(isSpecificQueue);
                     
                     if (isSpecificQueue) {
-                        // Populate queue multiselect
-                        const queueSelect = $('#node-input-selectedQueueIds');
-                        queueSelect.empty();
+                        // Populate queue checkboxes
+                        const queueContainer = $('#queue-checkbox-container');
+                        queueContainer.empty();
                         
                         // Get current flow ID
                         const currentFlowId = RED.workspaces.active();
                         
-                        RED.nodes.eachNode(function(node) {
-                            if (node.type === 'delay' && node.pauseType === 'rate' && node.z === currentFlowId) {
-                                const label = node.name || `Delay Node (${node.id.substring(0, 8)})`;
-                                const isSelected = Array.isArray(this.selectedQueueIds) && this.selectedQueueIds.includes(node.id);
-                                queueSelect.append(`<option value="${node.id}" ${isSelected ? 'selected' : ''}>${label}</option>`);
+                        const savedSelectedIds = node.selectedQueueIds || [];
+                        RED.nodes.eachNode(function(delayNode) {
+                            if (delayNode.type === 'delay' && delayNode.pauseType === 'rate' && delayNode.z === currentFlowId) {
+                                const label = delayNode.name || `Delay Node (${delayNode.id.substring(0, 8)})`;
+                                const isSelected = Array.isArray(savedSelectedIds) && savedSelectedIds.includes(delayNode.id);
+                                const checkboxHtml = `
+                                    <div style="margin: 2px 0; width: 100%;">
+                                        <label style="display: flex; align-items: center; justify-content: flex-start; font-weight: normal; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                            <input type="checkbox" class="queue-checkbox" value="${delayNode.id}" ${isSelected ? 'checked' : ''} style="margin-right: 8px; flex-shrink: 0; flex-basis: 5%">
+                                            <span style="flex: 1; min-width: 0;">${label}</span>
+                                        </label>
+                                    </div>
+                                `;
+                                queueContainer.append(checkboxHtml);
                             }
-                        }.bind(this));
+                        });
                     }
                 } else {
                     selectedQueueRow.hide();
@@ -63,9 +74,12 @@
             updateQueueVisibility();
         },
         oneditsave: function() {
-            // Convert multiselect values to array
-            const selectedValues = $('#node-input-selectedQueueIds').val() || [];
-            this.selectedQueueIds = Array.isArray(selectedValues) ? selectedValues : [selectedValues].filter(v => v);
+            // Collect checked queue IDs
+            const selectedValues = [];
+            $('.queue-checkbox:checked').each(function() {
+                selectedValues.push($(this).val());
+            });
+            this.selectedQueueIds = selectedValues;
         },
     });
     
@@ -313,47 +327,123 @@
     });
 </script>
 
+<style>
+    .form-row-stacked {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 15px;
+    }
+    
+    .form-row-stacked label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 5px;
+        font-weight: bold;
+        display: block;
+    }
+    
+    .form-row-stacked input,
+    .form-row-stacked select {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .form-row-stacked .form-tips {
+        margin-top: 3px;
+        font-size: 0.9em;
+        color: #666;
+    }
+    
+    .form-row-grouped {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .form-row-grouped .form-col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .form-row-grouped .form-col label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 5px;
+        font-weight: bold;
+        display: block;
+    }
+    
+    .form-row-grouped .form-col input,
+    .form-row-grouped .form-col select {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .form-row-grouped .form-col input[type="checkbox"] {
+        width: auto;
+        align-self: flex-start;
+    }
+    
+    .form-row-grouped .form-col .form-tips {
+        margin-top: 3px;
+        font-size: 0.9em;
+        color: #666;
+    }
+</style>
+
 <script type="text/html" data-template-name="code-analyzer">
-    <div class="form-row">
+    <div class="form-row-stacked">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Code Analyzer">
     </div>
     
-    <div class="form-row">
-        <label for="node-input-scanInterval"><i class="fa fa-clock-o"></i> Scan Interval (ms)</label>
-        <input type="number" id="node-input-scanInterval" placeholder="30000">
-        <div class="form-tips">Set to 0 to disable automatic scanning</div>
+    <div class="form-row-grouped">
+        <div class="form-col">
+            <label for="node-input-scanInterval"><i class="fa fa-clock-o"></i> Scan Interval (ms)</label>
+            <input type="number" id="node-input-scanInterval" placeholder="30000">
+            <div class="form-tips">Set to 0 to disable automatic scanning</div>
+        </div>
+        <div class="form-col">
+            <label for="node-input-detectionLevel"><i class="fa fa-level-up"></i> Detection Level</label>
+            <select id="node-input-detectionLevel">
+                <option value="1">Level 1</option>
+                <option value="2">Level 2</option>
+                <option value="3">Level 3</option>
+            </select>
+            <div class="form-tips">Choose the level of debugging detection strictness</div>
+        </div>
     </div>
     
-    <div class="form-row">
-        <label for="node-input-detectionLevel"><i class="fa fa-level-up"></i> Detection Level</label>
-        <select id="node-input-detectionLevel">
-            <option value="1">Level 1</option>
-            <option value="2">Level 2</option>
-            <option value="3">Level 3</option>
-        </select>
-        <div class="form-tips">Choose the level of debugging detection strictness</div>
+    <div class="form-row-grouped">
+        <div class="form-col">
+            <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
+            <input type="checkbox" id="node-input-autoStart" checked>
+            <div class="form-tips">Start scanning automatically when deployed</div>
+        </div>
+        <div class="form-col">
+            <label for="node-input-queueScanning"><i class="fa fa-list"></i> Queue Scanning</label>
+            <input type="checkbox" id="node-input-queueScanning">
+            <div class="form-tips">Enable monitoring of delay node queues</div>
+        </div>
     </div>
     
-    <div class="form-row">
-        <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
-        <input type="checkbox" id="node-input-autoStart" checked>
-        <div class="form-tips">Start scanning automatically when deployed</div>
+    <div class="form-row-grouped form-row-queueInterval" style="display: none;">
+        <div class="form-col">
+            <label for="node-input-queueScanInterval"><i class="fa fa-clock-o"></i> Queue Scan Interval (ms)</label>
+            <input type="number" id="node-input-queueScanInterval" placeholder="3000">
+            <div class="form-tips">How often to check queue status (recommended: 3000ms)</div>
+        </div>
+        <div class="form-col">
+            <label for="node-input-queueMessageFrequency"><i class="fa fa-bell"></i> Message Frequency (ms)</label>
+            <input type="number" id="node-input-queueMessageFrequency" placeholder="1800000">
+            <div class="form-tips">How often to send warning messages (default: 30min)</div>
+        </div>
     </div>
     
-    <div class="form-row">
-        <label for="node-input-queueScanning"><i class="fa fa-list"></i> Queue Scanning</label>
-        <input type="checkbox" id="node-input-queueScanning">
-        <div class="form-tips">Enable monitoring of delay node queues</div>
-    </div>
-    
-    <div class="form-row form-row-queueInterval" style="display: none;">
-        <label for="node-input-queueScanInterval"><i class="fa fa-clock-o"></i> Queue Scan Interval (ms)</label>
-        <input type="number" id="node-input-queueScanInterval" placeholder="30000">
-        <div class="form-tips">How often to check queue status</div>
-    </div>
-    
-    <div class="form-row form-row-queueMode" style="display: none;">
+    <div class="form-row-stacked form-row-queueMode" style="display: none;">
         <label for="node-input-queueScanMode"><i class="fa fa-filter"></i> Queue Scan Mode</label>
         <select id="node-input-queueScanMode">
             <option value="all">All Queues</option>
@@ -362,14 +452,15 @@
         <div class="form-tips">Choose to monitor all queues or a specific one</div>
     </div>
     
-    <div class="form-row form-row-selectedQueue" style="display: none;">
-        <label for="node-input-selectedQueueIds"><i class="fa fa-crosshairs"></i> Select Queues</label>
-        <select id="node-input-selectedQueueIds" multiple size="4" style="width: 100%;">
-        </select>
-        <div class="form-tips">Choose which specific queues to monitor (hold Ctrl/Cmd to select multiple)</div>
+    <div class="form-row-stacked form-row-selectedQueue" style="display: none;">
+        <label><i class="fa fa-crosshairs"></i> Select Queues</label>
+        <div id="queue-checkbox-container" style="max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; margin-top: 5px; width: 100%; box-sizing: border-box;">
+            <!-- Queue checkboxes will be populated here -->
+        </div>
+        <div class="form-tips">Choose which specific queues to monitor</div>
     </div>
     
-    <div class="form-row form-row-queueThreshold" style="display: none;">
+    <div class="form-row-stacked form-row-queueThreshold" style="display: none;">
         <label for="node-input-queueLengthThreshold"><i class="fa fa-exclamation-triangle"></i> Queue Length Threshold</label>
         <input type="number" id="node-input-queueLengthThreshold" placeholder="0" min="0">
         <div class="form-tips">Only warn when queue length exceeds this value (0 = warn on any queue length)</div>

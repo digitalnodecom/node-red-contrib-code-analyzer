@@ -8,10 +8,14 @@ module.exports = function(RED) {
         node.scanInterval = config.scanInterval || 30000;
         node.detectionLevel = config.detectionLevel || 1;
         node.queueScanning = config.queueScanning || false;
-        node.queueScanInterval = config.queueScanInterval || 30000;
+        node.queueScanInterval = config.queueScanInterval || 3000;
+        node.queueMessageFrequency = config.queueMessageFrequency || 1800000;
         node.queueScanMode = config.queueScanMode || "all";
         node.selectedQueueIds = config.selectedQueueIds || [];
         node.queueLengthThreshold = config.queueLengthThreshold || 0;
+        
+        // Track last message times for each queue
+        node.lastMessageTimes = {};
         
         let scanTimer;
         let queueMonitorTimer;
@@ -105,8 +109,16 @@ module.exports = function(RED) {
                             const droppedCount = delayNode.droppedMsgs;
                             const isDropping = delayNode.drop;
 
-                            if (queueLength > node.queueLengthThreshold)
-                                node.warn(queueLength)
+                            if (queueLength > node.queueLengthThreshold) {
+                                const now = Date.now();
+                                const lastMessageTime = node.lastMessageTimes[nodeConfig.id] || 0;
+                                
+                                // Only send message if frequency interval has passed
+                                if (now - lastMessageTime >= node.queueMessageFrequency) {
+                                    node.warn(`Queue ${nodeConfig.name || nodeConfig.id.substring(0, 8)} length: ${queueLength}`);
+                                    node.lastMessageTimes[nodeConfig.id] = now;
+                                }
+                            }
                         }
                     }
                 }
