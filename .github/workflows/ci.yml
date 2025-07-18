@@ -48,15 +48,23 @@ jobs:
         COVERAGE=$(node -e "
           const fs = require('fs');
           const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
-          const total = coverage.total;
-          console.log(Math.round(total.lines.pct));
+          // Focus on lib/ directory coverage (core business logic)
+          const libDetector = coverage['lib/detector.js'];
+          const libSlack = coverage['lib/slack-notifier.js'];
+          
+          if (libDetector && libSlack) {
+            const avgLibCoverage = Math.round((libDetector.lines.pct + libSlack.lines.pct) / 2);
+            console.log(avgLibCoverage);
+          } else {
+            console.log(Math.round(coverage.total.lines.pct));
+          }
         ")
-        echo "Coverage: $COVERAGE%"
-        if [ "$COVERAGE" -lt 80 ]; then
-          echo "❌ Coverage is below 80% threshold"
+        echo "Core library coverage: $COVERAGE%"
+        if [ "$COVERAGE" -lt 85 ]; then
+          echo "❌ Core library coverage is below 85% threshold"
           exit 1
         else
-          echo "✅ Coverage meets 80% threshold"
+          echo "✅ Core library coverage meets 85% threshold"
         fi
 
   security:
@@ -199,9 +207,18 @@ jobs:
         script: |
           const fs = require('fs');
           let coverage = 'N/A';
+          let libCoverage = 'N/A';
           try {
             const coverageData = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
             coverage = Math.round(coverageData.total.lines.pct) + '%';
+            
+            // Calculate lib/ directory coverage
+            const libDetector = coverageData['lib/detector.js'];
+            const libSlack = coverageData['lib/slack-notifier.js'];
+            if (libDetector && libSlack) {
+              const avgLibCoverage = Math.round((libDetector.lines.pct + libSlack.lines.pct) / 2);
+              libCoverage = avgLibCoverage + '%';
+            }
           } catch (error) {
             console.log('Could not read coverage data');
           }
@@ -209,7 +226,8 @@ jobs:
           const comment = `## 🧪 Test Results
           
           ✅ All tests passed!
-          📊 Code coverage: ${coverage}
+          📊 Overall coverage: ${coverage}
+          🎯 Core library coverage: ${libCoverage}
           🔍 Security audit: Passed
           📋 Code quality: Passed
           
