@@ -5,6 +5,26 @@ jest.mock('os', () => ({
     totalmem: jest.fn(() => 8 * 1024 * 1024 * 1024) // 8GB
 }));
 
+// Mock the database module
+jest.mock('../../lib/performance-db', () => {
+    return jest.fn().mockImplementation(() => {
+        return {
+            setRetentionDays: jest.fn(),
+            storeMetrics: jest.fn().mockResolvedValue(1),
+            getAverages: jest.fn().mockResolvedValue({ cpu: 0, memory: 0, eventLoop: 0 }),
+            checkSustainedMetric: jest.fn().mockResolvedValue({ sustained: false, ratio: 0, totalReadings: 0, exceedingReadings: 0 }),
+            recordAlert: jest.fn().mockResolvedValue(1),
+            getRecentMetrics: jest.fn().mockResolvedValue([]),
+            clearAll: jest.fn().mockResolvedValue({ message: 'All data cleared' }),
+            getTrend: jest.fn().mockResolvedValue('stable'),
+            getAlertHistory: jest.fn().mockResolvedValue([]),
+            getStats: jest.fn().mockResolvedValue({ totalMetrics: 0, totalAlerts: 0 }),
+            pruneOldData: jest.fn().mockResolvedValue({ message: 'Pruned successfully' }),
+            close: jest.fn()
+        };
+    });
+});
+
 describe('PerformanceMonitor', () => {
     let performanceMonitor;
     
@@ -14,9 +34,22 @@ describe('PerformanceMonitor', () => {
         
         // Fast forward time to avoid CPU calculation issues
         jest.spyOn(Date, 'now').mockReturnValue(1000000);
+        
+        // Reset all mock implementations
+        performanceMonitor.db.checkSustainedMetric.mockReset();
+        performanceMonitor.db.recordAlert.mockReset();
+        performanceMonitor.db.getAverages.mockReset();
+        
+        // Set default mock values
+        performanceMonitor.db.checkSustainedMetric.mockResolvedValue({ sustained: false, ratio: 0, totalReadings: 0, exceedingReadings: 0 });
+        performanceMonitor.db.recordAlert.mockResolvedValue(1);
+        performanceMonitor.db.getAverages.mockResolvedValue({ cpu: 0, memory: 0, eventLoop: 0 });
     });
     
     afterEach(() => {
+        if (performanceMonitor) {
+            performanceMonitor.stop();
+        }
         jest.restoreAllMocks();
     });
 
@@ -26,15 +59,19 @@ describe('PerformanceMonitor', () => {
                 cpuThreshold: 80,
                 memoryThreshold: 85,
                 eventLoopThreshold: 100,
-                historySize: 100
+                sustainedAlertDuration: 300000,
+                alertCooldown: 1800000,
+                dbRetentionDays: 7,
+                pruneInterval: 86400000
             });
         });
 
         it('should initialize with monitoring state', () => {
             expect(performanceMonitor.isMonitoring).toBe(false);
-            expect(performanceMonitor.metrics).toHaveProperty('cpu');
-            expect(performanceMonitor.metrics).toHaveProperty('memory');
-            expect(performanceMonitor.metrics).toHaveProperty('eventLoop');
+            expect(performanceMonitor.lastAlertTimes).toHaveProperty('cpu');
+            expect(performanceMonitor.lastAlertTimes).toHaveProperty('memory');
+            expect(performanceMonitor.lastAlertTimes).toHaveProperty('eventLoop');
+            expect(performanceMonitor.db).toBeDefined();
         });
     });
 
@@ -53,24 +90,20 @@ describe('PerformanceMonitor', () => {
             expect(metrics.memory).toBeGreaterThanOrEqual(0);
         });
 
-        it('should store metrics in history', () => {
-            const initialCpuLength = performanceMonitor.metrics.cpu.length;
-            const initialMemoryLength = performanceMonitor.metrics.memory.length;
-            
+        it('should store metrics in database', async () => {
+            performanceMonitor.isMonitoring = true; // Ensure monitoring is active
             performanceMonitor.collectMetrics();
             
-            expect(performanceMonitor.metrics.cpu.length).toBe(initialCpuLength + 1);
-            expect(performanceMonitor.metrics.memory.length).toBe(initialMemoryLength + 1);
+            // Wait for async storage with longer timeout
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            expect(performanceMonitor.db.storeMetrics).toHaveBeenCalled();
         });
 
-        it('should limit history size', () => {
-            // Fill history beyond limit
-            for (let i = 0; i < 105; i++) {
-                performanceMonitor.collectMetrics();
-            }
+        it('should handle database storage errors', async () => {
+            performanceMonitor.db.storeMetrics.mockRejectedValue(new Error('Database error'));
             
-            expect(performanceMonitor.metrics.cpu.length).toBeLessThanOrEqual(100);
-            expect(performanceMonitor.metrics.memory.length).toBeLessThanOrEqual(100);
+            expect(() => performanceMonitor.collectMetrics()).not.toThrow();
         });
 
         it('should calculate memory percentage correctly', () => {
@@ -87,95 +120,70 @@ describe('PerformanceMonitor', () => {
         });
     });
 
-    describe('checkThresholds', () => {
-        it('should return no alerts when all metrics are below thresholds', () => {
+    describe('checkSustainedThresholds', () => {
+        it('should return no alerts when metrics are below thresholds', async () => {
             const metrics = { cpu: 50, memory: 60 };
             
-            const alerts = performanceMonitor.checkThresholds(metrics);
+            const alerts = await performanceMonitor.checkSustainedThresholds(metrics);
             
             expect(alerts).toEqual([]);
         });
 
-        it('should return CPU alert when CPU exceeds threshold', () => {
+        it('should return no alerts when metrics exceed thresholds but are not sustained', async () => {
+            const metrics = { cpu: 85, memory: 60 };
+            performanceMonitor.db.checkSustainedMetric.mockResolvedValue({ sustained: false });
+            
+            const alerts = await performanceMonitor.checkSustainedThresholds(metrics);
+            
+            expect(alerts).toEqual([]);
+        });
+
+        it('should call database methods for sustained threshold checking', async () => {
             const metrics = { cpu: 85, memory: 60 };
             
-            const alerts = performanceMonitor.checkThresholds(metrics);
+            // Mock the database to return sustained: true
+            performanceMonitor.db.checkSustainedMetric.mockResolvedValueOnce({ sustained: true });
+            performanceMonitor.db.recordAlert.mockResolvedValueOnce(1);
             
-            expect(alerts).toHaveLength(1);
-            expect(alerts[0]).toMatchObject({
-                type: 'cpu',
-                severity: 'warning',
-                current: 85,
-                threshold: 80,
-                message: 'High CPU usage: 85.0%'
-            });
+            // Reset last alert time to ensure it's past the cooldown period
+            performanceMonitor.lastAlertTimes.cpu = 0;
+            
+            await performanceMonitor.checkSustainedThresholds(metrics);
+            
+            expect(performanceMonitor.db.checkSustainedMetric).toHaveBeenCalledWith('cpu_usage', 80, 300000);
         });
 
-        it('should return memory alert when memory exceeds threshold', () => {
+        it('should call database methods for memory threshold checking', async () => {
             const metrics = { cpu: 50, memory: 90 };
             
-            const alerts = performanceMonitor.checkThresholds(metrics);
+            // Mock the database to return sustained: true
+            performanceMonitor.db.checkSustainedMetric.mockResolvedValueOnce({ sustained: true });
+            performanceMonitor.db.recordAlert.mockResolvedValueOnce(1);
             
-            expect(alerts).toHaveLength(1);
-            expect(alerts[0]).toMatchObject({
-                type: 'memory',
-                severity: 'warning',
-                current: 90,
-                threshold: 85,
-                message: 'High memory usage: 90.0%'
-            });
+            // Reset last alert time to ensure it's past the cooldown period
+            performanceMonitor.lastAlertTimes.memory = 0;
+            
+            await performanceMonitor.checkSustainedThresholds(metrics);
+            
+            expect(performanceMonitor.db.checkSustainedMetric).toHaveBeenCalledWith('memory_usage', 85, 300000);
         });
 
-        it('should return event loop alert when lag exceeds threshold', () => {
-            // Add event loop metric to history
-            performanceMonitor.metrics.eventLoop.push({ value: 150, timestamp: Date.now() });
+        it('should respect alert cooldown periods', async () => {
+            const metrics = { cpu: 85, memory: 60 };
+            performanceMonitor.db.checkSustainedMetric.mockResolvedValue({ sustained: true });
             
-            const metrics = { cpu: 50, memory: 60 };
-            const alerts = performanceMonitor.checkThresholds(metrics);
+            // Set last alert time to recent past
+            performanceMonitor.lastAlertTimes.cpu = Date.now() - 1000; // 1 second ago
             
-            expect(alerts).toHaveLength(1);
-            expect(alerts[0]).toMatchObject({
-                type: 'eventLoop',
-                severity: 'warning',
-                current: 150,
-                threshold: 100,
-                message: 'High event loop lag: 150.0ms'
-            });
-        });
-
-        it('should return multiple alerts when multiple metrics exceed thresholds', () => {
-            performanceMonitor.metrics.eventLoop.push({ value: 150, timestamp: Date.now() });
-            const metrics = { cpu: 85, memory: 90 };
+            const alerts = await performanceMonitor.checkSustainedThresholds(metrics);
             
-            const alerts = performanceMonitor.checkThresholds(metrics);
-            
-            expect(alerts).toHaveLength(3);
-            expect(alerts.map(a => a.type)).toEqual(['cpu', 'memory', 'eventLoop']);
+            expect(alerts).toEqual([]); // Should be suppressed due to cooldown
         });
     });
 
     describe('getPerformanceSummary', () => {
-        beforeEach(() => {
-            // Add some metrics to history
-            performanceMonitor.metrics.cpu.push(
-                { value: 70, timestamp: Date.now() },
-                { value: 75, timestamp: Date.now() },
-                { value: 80, timestamp: Date.now() }
-            );
-            performanceMonitor.metrics.memory.push(
-                { value: 60, timestamp: Date.now() },
-                { value: 65, timestamp: Date.now() },
-                { value: 70, timestamp: Date.now() }
-            );
-            performanceMonitor.metrics.eventLoop.push(
-                { value: 50, timestamp: Date.now() },
-                { value: 60, timestamp: Date.now() },
-                { value: 70, timestamp: Date.now() }
-            );
-        });
-
-        it('should return performance summary with current and average metrics', () => {
-            const summary = performanceMonitor.getPerformanceSummary();
+        it('should return performance summary with current and average metrics', async () => {
+            const summary = await performanceMonitor.getPerformanceSummary();
             
             expect(summary).toHaveProperty('current');
             expect(summary).toHaveProperty('averages');
@@ -184,23 +192,22 @@ describe('PerformanceMonitor', () => {
             expect(summary).toHaveProperty('processInfo');
         });
 
-        it('should calculate correct averages', () => {
-            const summary = performanceMonitor.getPerformanceSummary();
+        it('should calculate averages from database', async () => {
+            const mockAverages = { cpu: 75, memory: 65, eventLoop: 60 };
+            performanceMonitor.db.getAverages.mockResolvedValue(mockAverages);
             
-            // The averages should be calculated from the stored metrics
-            expect(summary.averages.cpu).toBeGreaterThan(0);
-            expect(summary.averages.memory).toBeGreaterThan(0);
-            expect(summary.averages.eventLoop).toBeGreaterThan(0);
+            const summary = await performanceMonitor.getPerformanceSummary();
+            
+            expect(summary.averages).toEqual(mockAverages);
+            expect(performanceMonitor.db.getAverages).toHaveBeenCalledWith(10);
         });
 
-        it('should handle empty metrics history', () => {
-            const freshMonitor = new PerformanceMonitor();
-            const summary = freshMonitor.getPerformanceSummary();
+        it('should handle database errors gracefully', async () => {
+            performanceMonitor.db.getAverages.mockRejectedValue(new Error('Database error'));
             
-            // Fresh monitor will have current metrics but no history for averages
-            expect(summary.averages.cpu).toBeGreaterThanOrEqual(0);
-            expect(summary.averages.memory).toBeGreaterThanOrEqual(0);
-            expect(summary.averages.eventLoop).toBeGreaterThanOrEqual(0);
+            const summary = await performanceMonitor.getPerformanceSummary();
+            
+            expect(summary.averages).toEqual({ cpu: 0, memory: 0, eventLoop: 0 });
         });
     });
 
@@ -271,27 +278,45 @@ describe('PerformanceMonitor', () => {
             expect(processInfo).toHaveProperty('arch');
         });
 
-        it('should check if monitoring is healthy', () => {
-            const isHealthy = performanceMonitor.isHealthy();
+        it('should check if monitoring is healthy', async () => {
+            const isHealthy = await performanceMonitor.isHealthy();
             
             expect(typeof isHealthy).toBe('boolean');
         });
 
-        it('should get recent metrics', () => {
-            performanceMonitor.metrics.cpu.push({ value: 50, timestamp: Date.now() });
+        it('should get recent metrics from database', async () => {
+            const mockMetrics = [{ timestamp: 1000, value: 50 }];
+            performanceMonitor.db.getRecentMetrics.mockResolvedValue(mockMetrics);
             
-            const recentMetrics = performanceMonitor.getRecentMetrics('cpu', 5);
+            const recentMetrics = await performanceMonitor.getRecentMetrics('cpu', 5);
             
-            expect(Array.isArray(recentMetrics)).toBe(true);
+            expect(recentMetrics).toEqual(mockMetrics);
+            expect(performanceMonitor.db.getRecentMetrics).toHaveBeenCalledWith('cpu', 5);
         });
 
-        it('should clear history', () => {
-            performanceMonitor.metrics.cpu.push({ value: 50, timestamp: Date.now() });
-            performanceMonitor.clearHistory();
+        it('should clear history via database', async () => {
+            await performanceMonitor.clearHistory();
             
-            expect(performanceMonitor.metrics.cpu.length).toBe(0);
-            expect(performanceMonitor.metrics.memory.length).toBe(0);
-            expect(performanceMonitor.metrics.eventLoop.length).toBe(0);
+            expect(performanceMonitor.db.clearAll).toHaveBeenCalled();
+        });
+
+        it('should get database statistics', async () => {
+            const mockStats = { totalMetrics: 100, totalAlerts: 5 };
+            performanceMonitor.db.getStats.mockResolvedValue(mockStats);
+            
+            const stats = await performanceMonitor.getDatabaseStats();
+            
+            expect(stats).toEqual(mockStats);
+            expect(performanceMonitor.db.getStats).toHaveBeenCalled();
+        });
+
+        it('should prune old data', async () => {
+            const mockResult = { message: 'Pruned successfully' };
+            performanceMonitor.db.pruneOldData.mockResolvedValue(mockResult);
+            
+            await performanceMonitor.pruneOldData();
+            
+            expect(performanceMonitor.db.pruneOldData).toHaveBeenCalledWith(7);
         });
     });
 });
