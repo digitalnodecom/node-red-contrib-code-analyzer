@@ -1,5 +1,6 @@
 const { detectDebuggingTraits } = require('../lib/detector');
 const SlackNotifier = require('../lib/slack-notifier');
+const PerformanceMonitor = require('../lib/performance-monitor');
 
 module.exports = function(RED) {
     function CodeAnalyzer(config) {
@@ -16,6 +17,15 @@ module.exports = function(RED) {
         node.queueLengthThreshold = config.queueLengthThreshold || 0;
         node.slackWebhookUrl = config.slackWebhookUrl || '';
         
+        // Performance monitoring configuration
+        node.performanceMonitoring = config.performanceMonitoring || false;
+        node.performanceInterval = Math.max(config.performanceInterval || 10000, 1000); // Min 1 second
+        node.performanceThresholds = {
+            cpuThreshold: config.cpuThreshold || 80,
+            memoryThreshold: config.memoryThreshold || 85,
+            eventLoopThreshold: config.eventLoopThreshold || 100
+        };
+        
         // Track last message times for each queue
         node.lastMessageTimes = {};
         
@@ -26,11 +36,19 @@ module.exports = function(RED) {
         // Track code analysis issues for grouped messages
         node.lastCodeAnalysisMessageTime = 0;
         
+        // Track performance monitoring
+        node.lastPerformanceAlertTime = 0;
+        
         // Initialize Slack notifier
         const slackNotifier = new SlackNotifier(node.slackWebhookUrl, RED);
         
+        // Initialize performance monitor
+        const performanceMonitor = new PerformanceMonitor();
+        performanceMonitor.updateConfig(node.performanceThresholds);
+        
         let scanTimer;
         let queueMonitorTimer;
+        let performanceMonitorTimer;
         
         
         
@@ -173,6 +191,40 @@ module.exports = function(RED) {
             });
         }
         
+        function monitorPerformance() {
+            if (!node.performanceMonitoring) return;
+            
+            const performanceSummary = performanceMonitor.getPerformanceSummary();
+            const now = Date.now();
+            
+            // Check if we should send performance alerts
+            if (performanceSummary.alerts.length > 0) {
+                // Check if enough time has passed since last alert
+                if (now - node.lastPerformanceAlertTime >= node.queueMessageFrequency) {
+                    slackNotifier.sendPerformanceAlert(performanceSummary, (msg) => node.warn(msg));
+                    node.lastPerformanceAlertTime = now;
+                }
+                
+                // Update node status to show performance issues
+                const alertCount = performanceSummary.alerts.length;
+                const highestSeverity = performanceSummary.alerts.some(a => a.severity === 'warning') ? 'warning' : 'info';
+                
+                node.status({
+                    fill: highestSeverity === 'warning' ? 'orange' : 'yellow',
+                    shape: 'ring',
+                    text: `Performance: ${alertCount} alert${alertCount > 1 ? 's' : ''} - CPU: ${performanceSummary.current.cpu.toFixed(1)}%, Mem: ${performanceSummary.current.memory.toFixed(1)}%`
+                });
+            } else {
+                // Show current performance metrics in status
+                const current = performanceSummary.current;
+                node.status({
+                    fill: 'green',
+                    shape: 'ring',
+                    text: `Performance: OK - CPU: ${current.cpu.toFixed(1)}%, Mem: ${current.memory.toFixed(1)}%`
+                });
+            }
+        }
+        
         function startScanning() {
             scanCurrentFlow();
             
@@ -183,6 +235,12 @@ module.exports = function(RED) {
             // Start queue monitoring if enabled
             if (node.queueScanning) {
                 queueMonitorTimer = setInterval(monitorQueues, node.queueScanInterval);
+            }
+            
+            // Start performance monitoring if enabled
+            if (node.performanceMonitoring) {
+                performanceMonitor.start();
+                performanceMonitorTimer = setInterval(monitorPerformance, node.performanceInterval);
             }
         }
         
@@ -198,6 +256,10 @@ module.exports = function(RED) {
             }
             if (queueMonitorTimer) {
                 clearInterval(queueMonitorTimer);
+            }
+            if (performanceMonitorTimer) {
+                clearInterval(performanceMonitorTimer);
+                performanceMonitor.stop();
             }
         });
         
