@@ -33,6 +33,44 @@ Includes Level 2 plus:
 - **Hardcoded test values**: Common test patterns like `= "test"`, `= "debug"`, `= "temp"`, `= 123`
 - **Multiple empty lines**: 2 or more consecutive empty lines
 
+## Ignore Directives
+
+Sometimes you need to intentionally use debugging code or patterns that the analyzer would normally flag. You can use comment-based ignore directives to exclude specific lines or regions from analysis:
+
+### Region Ignoring
+```javascript
+// @nr-analyzer-ignore-start
+return; // This will be ignored
+node.warn("This debug statement is intentional");
+const test = "test"; // This hardcoded value is ignored
+// @nr-analyzer-ignore-end
+```
+
+### Single Line Ignoring
+```javascript
+return; // @nr-analyzer-ignore-line
+node.warn("debug"); // This line will be flagged
+```
+
+### Next Line Ignoring
+```javascript
+// @nr-analyzer-ignore-next
+return; // This line will be ignored
+node.warn("debug"); // This line will be flagged
+```
+
+### Supported Directive Formats
+- `@nr-analyzer-ignore-*` (recommended)
+- `@nr-analizer-ignore-*` (alternative spelling)
+- Case insensitive: `@NR-ANALYZER-IGNORE-START` works the same
+- Flexible spacing: `// @nr-analyzer-ignore-start` and `//   @nr-analyzer-ignore-start` both work
+
+### What Gets Ignored
+All detection levels respect ignore directives:
+- **Level 1**: Top-level return statements
+- **Level 2**: node.warn() calls and TODO/FIXME comments  
+- **Level 3**: Hardcoded values and excessive empty lines
+
 ## Performance Monitoring
 
 The performance monitoring feature continuously tracks your Node-RED instance's system metrics and provides intelligent alerting based on sustained threshold violations. Unlike traditional monitoring that alerts on momentary spikes, this system only triggers alerts when metrics remain above thresholds for a configured duration (e.g., CPU above 75% for 5+ minutes), preventing false alarms from temporary load spikes. All metrics are stored in a local SQLite database with automatic data retention management, and alerts include average values over the sustained period rather than instantaneous readings for more accurate performance insights.
