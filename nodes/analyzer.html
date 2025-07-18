@@ -201,11 +201,11 @@
                 const trimmed = line.trim();
                 
                 // Check for ignore-start directive
-                if (trimmed.match(/\/\/\s*@nr-anal[yi]zer?-ignore-start/i)) {
+                if (trimmed.match(/\/\/\s*@nr-analyzer-ignore-start/i)) {
                     // Find the corresponding end directive
                     for (let j = i + 1; j < lines.length; j++) {
                         const endLine = lines[j].trim();
-                        if (endLine.match(/\/\/\s*@nr-anal[yi]zer?-ignore-end/i)) {
+                        if (endLine.match(/\/\/\s*@nr-analyzer-ignore-end/i)) {
                             ignoreRegions.push({ start: i + 1, end: j + 1 }); // 1-based line numbers
                             break;
                         }
@@ -213,12 +213,12 @@
                 }
                 
                 // Check for single line ignore
-                if (trimmed.match(/\/\/\s*@nr-anal[yi]zer?-ignore-line/i)) {
+                if (trimmed.match(/\/\/\s*@nr-analyzer-ignore-line/i)) {
                     ignoreLines.add(i + 1); // 1-based line numbers
                 }
                 
                 // Check for ignore-next directive
-                if (trimmed.match(/\/\/\s*@nr-anal[yi]zer?-ignore-next/i)) {
+                if (trimmed.match(/\/\/\s*@nr-analyzer-ignore-next/i)) {
                     if (i + 1 < lines.length) {
                         ignoreNextLines.add(i + 2); // 1-based line numbers (next line)
                     }
