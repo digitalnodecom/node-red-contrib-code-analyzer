@@ -15,13 +15,27 @@ module.exports = function(RED) {
             let nodesWithIssues = 0;
             
             const currentFlowId = node.z;
-            
+                
             RED.nodes.eachNode(function (nodeConfig) {
                 if (nodeConfig.type === 'function' && nodeConfig.z === currentFlowId) {
                     const functionNode = RED.nodes.getNode(nodeConfig.id);
                     if (functionNode && functionNode.status) {
                         functionNode.status({});
                     }
+                }
+
+                if (
+                    nodeConfig.type === 'delay' &&
+                    nodeConfig.pauseType == "rate" &&
+                    nodeConfig.id == 'dd2eca35aae89faa'
+                ) {
+                    const delayNode = RED.nodes.getNode(nodeConfig.id);
+                    
+                    const queueLength = delayNode?.buffer.length;
+                    const droppedCount = delayNode.droppedMsgs;
+                    const isDropping = delayNode.drop;
+
+                    node.warn(queueLength)
                 }
             });
             
@@ -59,7 +73,6 @@ module.exports = function(RED) {
                         }
                         
                         const issueMessages = issues.map(issue => issue.message || issue);
-                        node.warn(`Function node ${nodeConfig.id} (${nodeConfig.name || 'unnamed'}) has debugging issues: ${issueMessages.join(', ')}`);
                     } else {
                         delete nodeConfig._debugIssues;
                     }
