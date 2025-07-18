@@ -271,6 +271,88 @@ describe('SlackNotifier', () => {
             expect(payload.text).toContain('TestNode2');
         });
         
+        test('should send performance alert with CPU and memory violations', async () => {
+            // Arrange
+            const performanceSummary = {
+                current: { cpu: 85.5, memory: 90.2, eventLoopLag: 15.3 },
+                alerts: [
+                    { type: 'cpu', threshold: 75, current: 85.5, sustainedDuration: 300000, severity: 'warning' },
+                    { type: 'memory', threshold: 80, current: 90.2, sustainedDuration: 300000, severity: 'warning' }
+                ]
+            };
+            
+            fetch.mockResolvedValueOnce({ ok: true });
+            
+            // Act
+            await slackNotifier.sendPerformanceAlert(performanceSummary);
+            
+            // Assert
+            expect(fetch).toHaveBeenCalledWith(
+                'https://hooks.slack.com/test',
+                expect.objectContaining({
+                    method: 'POST'
+                })
+            );
+            
+            const callArgs = fetch.mock.calls[0];
+            const payload = JSON.parse(callArgs[1].body);
+            expect(payload.text).toContain('CRITICAL PERFORMANCE ALERT');
+            expect(payload.text).toContain('CPU usage** threshold of 75%');
+            expect(payload.text).toContain('memory usage** threshold of 80%');
+            expect(payload.text).toContain('5 minutes');
+            expect(payload.text).toContain('**CPU**: Identify and optimize');
+            expect(payload.text).toContain('**Memory**: Investigate memory leaks');
+        });
+        
+        test('should not send performance alert when no alerts exist', async () => {
+            // Arrange
+            const performanceSummary = {
+                current: { cpu: 50, memory: 60, eventLoopLag: 5 },
+                alerts: []
+            };
+            
+            // Act
+            await slackNotifier.sendPerformanceAlert(performanceSummary);
+            
+            // Assert
+            expect(fetch).not.toHaveBeenCalled();
+        });
+        
+        test('should handle event loop lag alerts', async () => {
+            // Arrange
+            const performanceSummary = {
+                current: { cpu: 50, memory: 60, eventLoopLag: 150 },
+                alerts: [
+                    { type: 'eventLoop', threshold: 100, current: 150, sustainedDuration: 180000, severity: 'info' }
+                ]
+            };
+            
+            fetch.mockResolvedValueOnce({ ok: true });
+            
+            // Act
+            await slackNotifier.sendPerformanceAlert(performanceSummary);
+            
+            // Assert
+            const callArgs = fetch.mock.calls[0];
+            const payload = JSON.parse(callArgs[1].body);
+            expect(payload.text).toContain('event loop delay** threshold of 100ms');
+            expect(payload.text).toContain('3 minutes');
+            expect(payload.text).toContain('**Event Loop**: Eliminate blocking operations');
+        });
+        
+        test('should handle fetch errors gracefully', async () => {
+            // Arrange
+            const mockCallback = jest.fn();
+            const testMessage = 'Test message';
+            fetch.mockRejectedValueOnce(new Error('Network error'));
+            
+            // Act
+            await slackNotifier.sendMessage(testMessage, mockCallback);
+            
+            // Assert
+            expect(mockCallback).toHaveBeenCalledWith(testMessage);
+        });
+        
         test('should categorize issues by severity level', async () => {
             // Arrange
             const flowId = 'flow123';
