@@ -9,6 +9,7 @@ module.exports = function(RED) {
         node.detectionLevel = config.detectionLevel || 1;
         
         let scanTimer;
+        let queueMonitorTimer;
         
         function scanCurrentFlow() {
             let totalIssues = 0;
@@ -22,20 +23,6 @@ module.exports = function(RED) {
                     if (functionNode && functionNode.status) {
                         functionNode.status({});
                     }
-                }
-
-                if (
-                    nodeConfig.type === 'delay' &&
-                    nodeConfig.pauseType == "rate" &&
-                    nodeConfig.id == 'dd2eca35aae89faa'
-                ) {
-                    const delayNode = RED.nodes.getNode(nodeConfig.id);
-                    
-                    const queueLength = delayNode?.buffer.length;
-                    const droppedCount = delayNode.droppedMsgs;
-                    const isDropping = delayNode.drop;
-
-                    node.warn(queueLength)
                 }
             });
             
@@ -94,12 +81,33 @@ module.exports = function(RED) {
             }
         }
         
+        function monitorQueues() {
+            RED.nodes.eachNode(function (nodeConfig) {
+                if (
+                    nodeConfig.type === 'delay' &&
+                    nodeConfig.pauseType == "rate" &&
+                    nodeConfig.id == 'dd2eca35aae89faa'
+                ) {
+                    const delayNode = RED.nodes.getNode(nodeConfig.id);
+                    
+                    const queueLength = delayNode?.buffer.length;
+                    const droppedCount = delayNode.droppedMsgs;
+                    const isDropping = delayNode.drop;
+
+                    node.warn(queueLength)
+                }
+            });
+        }
+        
         function startScanning() {
             scanCurrentFlow();
             
             if (node.scanInterval > 0) {
                 scanTimer = setInterval(scanCurrentFlow, node.scanInterval);
             }
+            
+            // Start queue monitoring every 3 seconds
+            queueMonitorTimer = setInterval(monitorQueues, 3000);
         }
         
         node.on('input', function(msg) {
@@ -111,6 +119,9 @@ module.exports = function(RED) {
         node.on('close', function() {
             if (scanTimer) {
                 clearInterval(scanTimer);
+            }
+            if (queueMonitorTimer) {
+                clearInterval(queueMonitorTimer);
             }
         });
         
