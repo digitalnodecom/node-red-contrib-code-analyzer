@@ -249,16 +249,18 @@ const temp = "temp";
 const num = 123;
 // @nr-analyzer-ignore-end
 const realTest = "test";
+node.log(realTest);
             `.trim();
             
             const issues = detectDebuggingTraits(code, 3);
             
-            // Should detect console.log and the hardcoded test outside ignore region
-            expect(issues).toHaveLength(2);
-            expect(issues[0].type).toBe('console-log');
-            expect(issues[0].line).toBe(1);
-            expect(issues[1].type).toBe('hardcoded-test');
-            expect(issues[1].line).toBe(8);
+            // Should detect only console.log and hardcoded test outside ignore region
+            const relevantIssues = issues.filter(issue => 
+                issue.type === 'console-log' || issue.type.startsWith('hardcoded-')
+            );
+            expect(relevantIssues).toHaveLength(2);
+            expect(relevantIssues.some(issue => issue.type === 'console-log' && issue.line === 1)).toBe(true);
+            expect(relevantIssues.some(issue => issue.type === 'hardcoded-test' && issue.line === 8)).toBe(true);
         });
 
         test('should ignore TODO comments in ignore regions', () => {

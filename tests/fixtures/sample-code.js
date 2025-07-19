@@ -43,11 +43,11 @@ node.warn("second");`,
 
     // Level 3 issues - Minor
     hardcodedValues: {
-        testString: 'const value = "test";',
-        debugString: 'const mode = "debug";',
-        tempString: 'const temp = "temp";',
-        testNumber: 'const num = 123;',
-        validValues: 'const name = "production";'
+        testString: 'const value = "test"; console.log(value);',
+        debugString: 'const mode = "debug"; console.log(mode);',
+        tempString: 'const temp = "temp"; console.log(temp);',
+        testNumber: 'const num = 123; console.log(num);',
+        validValues: 'const name = "production"; console.log(name);'
     },
 
     // Multiple issues

@@ -102,14 +102,16 @@ describe('AST-based Detector', () => {
                     const x = 5;
                     debugger;
                     const y = 10;
+                    console.log(x, y);
                 `;
                 
                 const issues = detectDebuggingTraitsAST(code, 2);
+                const debuggerIssues = issues.filter(issue => issue.type === 'debugger-statement');
                 
-                expect(issues).toHaveLength(1);
-                expect(issues[0].type).toBe('debugger-statement');
-                expect(issues[0].line).toBe(3);
-                expect(issues[0].severity).toBe('warning');
+                expect(debuggerIssues).toHaveLength(1);
+                expect(debuggerIssues[0].type).toBe('debugger-statement');
+                expect(debuggerIssues[0].line).toBe(3);
+                expect(debuggerIssues[0].severity).toBe('warning');
             });
             
             test('should detect TODO and FIXME comments', () => {
@@ -118,15 +120,15 @@ describe('AST-based Detector', () => {
                     const x = 5;
                     // FIXME: This is broken
                     const y = 10;
+                    console.log(x, y);
                 `;
                 
                 const issues = detectDebuggingTraitsAST(code, 2);
+                const todoIssues = issues.filter(issue => issue.type === 'todo-comment');
                 
-                expect(issues).toHaveLength(2);
-                expect(issues[0].type).toBe('todo-comment');
-                expect(issues[0].message).toContain('TODO');
-                expect(issues[1].type).toBe('todo-comment');
-                expect(issues[1].message).toContain('FIXME');
+                expect(todoIssues).toHaveLength(2);
+                expect(todoIssues.some(issue => issue.message.includes('TODO'))).toBe(true);
+                expect(todoIssues.some(issue => issue.message.includes('FIXME'))).toBe(true);
             });
         });
         
@@ -137,15 +139,17 @@ describe('AST-based Detector', () => {
                     const debugFlag = "debug";
                     const tempData = "temp";
                     const testNumber = 123;
+                    console.log(testValue, debugFlag, tempData, testNumber);
                 `;
                 
                 const issues = detectDebuggingTraitsAST(code, 3);
+                const hardcodedIssues = issues.filter(issue => issue.type.startsWith('hardcoded-'));
                 
-                expect(issues).toHaveLength(4);
-                expect(issues[0].type).toBe('hardcoded-test');
-                expect(issues[1].type).toBe('hardcoded-debug');
-                expect(issues[2].type).toBe('hardcoded-temp');
-                expect(issues[3].type).toBe('hardcoded-number');
+                expect(hardcodedIssues).toHaveLength(4);
+                expect(hardcodedIssues.some(issue => issue.type === 'hardcoded-test')).toBe(true);
+                expect(hardcodedIssues.some(issue => issue.type === 'hardcoded-debug')).toBe(true);
+                expect(hardcodedIssues.some(issue => issue.type === 'hardcoded-temp')).toBe(true);
+                expect(hardcodedIssues.some(issue => issue.type === 'hardcoded-number')).toBe(true);
             });
             
             test('should detect hardcoded test values in assignments', () => {
@@ -170,13 +174,15 @@ describe('AST-based Detector', () => {
                     
 
                     const y = 10;
+                    console.log(x, y);
                 `;
                 
                 const issues = detectDebuggingTraitsAST(code, 3);
+                const emptyLineIssues = issues.filter(issue => issue.type === 'multiple-empty-lines');
                 
-                expect(issues).toHaveLength(1);
-                expect(issues[0].type).toBe('multiple-empty-lines');
-                expect(issues[0].line).toBe(3);
+                expect(emptyLineIssues).toHaveLength(1);
+                expect(emptyLineIssues[0].type).toBe('multiple-empty-lines');
+                expect(emptyLineIssues[0].line).toBe(3);
             });
             
             test('should NOT detect legitimate values that happen to match patterns', () => {
@@ -184,11 +190,13 @@ describe('AST-based Detector', () => {
                     const productionValue = "production";
                     const environmentType = "development";
                     const validNumber = 456;
+                    console.log(productionValue, environmentType, validNumber);
                 `;
                 
                 const issues = detectDebuggingTraitsAST(code, 3);
+                const hardcodedIssues = issues.filter(issue => issue.type.startsWith('hardcoded-'));
                 
-                expect(issues).toHaveLength(0);
+                expect(hardcodedIssues).toHaveLength(0);
             });
         });
         
@@ -346,6 +354,95 @@ describe('AST-based Detector', () => {
             expect(result.ignoreRegions).toEqual([{ start: 2, end: 4 }]);
             expect(result.ignoreLines.size).toBe(0);
             expect(result.ignoreNextLines.size).toBe(0);
+        });
+    });
+    
+    describe('unused variables detection', () => {
+        test('should detect unused variables at level 2', () => {
+            const code = `
+                let unusedVar = 10;
+                let usedVar = 20;
+                console.log(usedVar);
+                function testFunc() {
+                    let anotherUnused = 30;
+                    return 42;
+                }
+            `;
+            
+            const issues = detectDebuggingTraitsAST(code, 2);
+            const unusedIssues = issues.filter(issue => issue.type === 'unused-variable');
+            
+            expect(unusedIssues).toHaveLength(2);
+            expect(unusedIssues.some(issue => issue.message.includes('unusedVar'))).toBe(true);
+            expect(unusedIssues.some(issue => issue.message.includes('anotherUnused'))).toBe(true);
+        });
+        
+        test('should not flag Node-RED globals as unused', () => {
+            const code = `
+                let msg = {};
+                let node = {};
+                let context = {};
+                let flow = {};
+                let global = {};
+                let env = {};
+                let RED = {};
+            `;
+            
+            const issues = detectDebuggingTraitsAST(code, 2);
+            const unusedIssues = issues.filter(issue => issue.type === 'unused-variable');
+            
+            expect(unusedIssues).toHaveLength(0);
+        });
+        
+        test('should not flag variables with underscore prefix as unused', () => {
+            const code = `
+                let _unused = 10;
+                let _temp = 20;
+            `;
+            
+            const issues = detectDebuggingTraitsAST(code, 2);
+            const unusedIssues = issues.filter(issue => issue.type === 'unused-variable');
+            
+            expect(unusedIssues).toHaveLength(0);
+        });
+        
+        test('should highlight only the variable name, not the whole declaration', () => {
+            const code = `let unusedVariable = "some long value";`;
+            
+            const issues = detectDebuggingTraitsAST(code, 2);
+            const unusedIssues = issues.filter(issue => issue.type === 'unused-variable');
+            
+            expect(unusedIssues).toHaveLength(1);
+            expect(unusedIssues[0].column).toBe(5); // Start of "unusedVariable"
+            expect(unusedIssues[0].endColumn).toBe(19); // End of "unusedVariable"
+        });
+        
+        test('should handle multiple variables declared on one line', () => {
+            const code = `let used = 1, unused = 2, alsoUsed = 3;
+                          console.log(used, alsoUsed);`;
+            
+            const issues = detectDebuggingTraitsAST(code, 2);
+            const unusedIssues = issues.filter(issue => issue.type === 'unused-variable');
+            
+            expect(unusedIssues).toHaveLength(1);
+            expect(unusedIssues[0].message).toContain('unused');
+        });
+        
+        test('should not flag function parameters as unused', () => {
+            const code = `
+                function testFunc(param1, param2) {
+                    return param1;
+                }
+                
+                const arrowFunc = (arg1, arg2) => {
+                    return arg1;
+                };
+            `;
+            
+            const issues = detectDebuggingTraitsAST(code, 2);
+            const unusedIssues = issues.filter(issue => issue.type === 'unused-variable');
+            
+            expect(unusedIssues).toHaveLength(0);
         });
     });
     
