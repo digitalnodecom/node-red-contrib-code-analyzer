@@ -98,7 +98,13 @@ module.exports = function(RED) {
                             let text = 'Minor debug traits noticed';
                             
                             const hasLevel1 = issues.some(issue => issue.type === 'top-level-return');
-                            const hasLevel2 = issues.some(issue => issue.type === 'node-warn' || issue.type === 'todo-comment');
+                            const hasLevel2 = issues.some(issue => 
+                                issue.type === 'node-warn' || 
+                                issue.type === 'todo-comment' || 
+                                issue.type === 'console-log' || 
+                                issue.type === 'debugger-statement' || 
+                                issue.type === 'unused-variable'
+                            );
                             
                             if (hasLevel1) {
                                 statusColor = 'red';

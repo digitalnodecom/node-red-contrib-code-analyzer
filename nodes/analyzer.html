@@ -296,6 +296,200 @@
             return detectWithASTSync(code, level, ignoreRegions, ignoreLines, ignoreNextLines);
         }
         
+        // Find unused variables in the AST (browser version)
+        function findUnusedVariablesBrowser(ast) {
+            const issues = [];
+            const scopes = [];
+            const globalScope = new Map(); // variable name -> { declared: Set, used: Set }
+            scopes.push(globalScope);
+            
+            function getCurrentScope() {
+                return scopes[scopes.length - 1];
+            }
+            
+            function enterScope() {
+                scopes.push(new Map());
+            }
+            
+            function exitScope() {
+                const currentScope = scopes.pop();
+                
+                // Check for unused variables in this scope
+                for (const [varName, info] of currentScope.entries()) {
+                    for (const declNode of info.declared) {
+                        // Skip if variable is used anywhere in this scope
+                        if (info.used.size > 0) continue;
+                        
+                        // Skip function parameters and certain variable names
+                        if (isExemptVariableBrowser(varName, declNode)) continue;
+                        
+                        // Create issue for unused variable with precise highlighting
+                        const issue = createUnusedVariableIssueBrowser(varName, declNode);
+                        if (issue) {
+                            issues.push(issue);
+                        }
+                    }
+                }
+            }
+            
+            function isExemptVariableBrowser(varName, declNode) {
+                // Skip common exempt patterns
+                if (varName.startsWith('_')) return true; // Underscore prefix indicates intentionally unused
+                if (['msg', 'node', 'context', 'flow', 'global', 'env', 'RED'].includes(varName)) return true; // Node-RED globals
+                
+                // Skip function parameters - check if this is a parameter by looking at parent context
+                if (declNode.type === 'Identifier') {
+                    let currentNode = declNode;
+                    while (currentNode && currentNode.parent) {
+                        const parentNode = currentNode.parent;
+                        if ((parentNode.type === 'FunctionDeclaration' || 
+                             parentNode.type === 'ArrowFunctionExpression' || 
+                             parentNode.type === 'FunctionExpression') &&
+                            parentNode.params && parentNode.params.includes(currentNode)) {
+                            return true;
+                        }
+                        currentNode = parentNode;
+                    }
+                }
+                
+                // Skip function declarations that are never called (they might be intended for external use)
+                if (declNode.type === 'FunctionDeclaration') {
+                    return true;
+                }
+                
+                // Skip variable declarations assigned to functions (like arrow functions)
+                if (declNode.type === 'VariableDeclarator' && 
+                    declNode.init && 
+                    (declNode.init.type === 'FunctionExpression' || 
+                     declNode.init.type === 'ArrowFunctionExpression')) {
+                    return true;
+                }
+                
+                return false;
+            }
+            
+            function createUnusedVariableIssueBrowser(varName, declNode) {
+                if (!declNode.loc) return null;
+                
+                let startColumn = declNode.loc.start.column + 1;
+                let endColumn = declNode.loc.end.column + 1;
+                
+                // For variable declarations, highlight only the variable name, not the whole declaration
+                if (declNode.type === 'VariableDeclarator' && declNode.id) {
+                    startColumn = declNode.id.loc.start.column + 1;
+                    endColumn = declNode.id.loc.end.column + 1;
+                }
+                
+                return {
+                    type: 'unused-variable',
+                    message: `Variable '${varName}' is declared but never used`,
+                    line: declNode.loc.start.line,
+                    column: startColumn,
+                    endColumn: endColumn,
+                    severity: 'info'
+                };
+            }
+            
+            function addVariableDeclaration(varName, node) {
+                const currentScope = getCurrentScope();
+                if (!currentScope.has(varName)) {
+                    currentScope.set(varName, { declared: new Set(), used: new Set() });
+                }
+                currentScope.get(varName).declared.add(node);
+            }
+            
+            function addVariableUsage(varName, node) {
+                // Look for variable in current scope chain (from innermost to outermost)
+                for (let i = scopes.length - 1; i >= 0; i--) {
+                    const scope = scopes[i];
+                    if (scope.has(varName)) {
+                        scope.get(varName).used.add(node);
+                        return;
+                    }
+                }
+            }
+            
+            function analyzeNode(node, parent = null) {
+                if (!node || typeof node !== 'object' || !node.type) return;
+                
+                node.parent = parent;
+                
+                // Handle scope creation
+                if (node.type === 'FunctionDeclaration' || 
+                    node.type === 'FunctionExpression' || 
+                    node.type === 'ArrowFunctionExpression' ||
+                    node.type === 'BlockStatement' ||
+                    node.type === 'Program') {
+                    
+                    enterScope();
+                    
+                    // Add function parameters as declarations
+                    if (node.params) {
+                        for (const param of node.params) {
+                            if (param.type === 'Identifier') {
+                                addVariableDeclaration(param.name, param);
+                            }
+                        }
+                    }
+                }
+                
+                // Handle variable declarations
+                if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier') {
+                    addVariableDeclaration(node.id.name, node);
+                }
+                
+                // Handle function declarations
+                if (node.type === 'FunctionDeclaration' && node.id && node.id.type === 'Identifier') {
+                    addVariableDeclaration(node.id.name, node);
+                }
+                
+                // Handle variable usage (identifier references)
+                if (node.type === 'Identifier' && parent) {
+                    // Skip if this identifier is a declaration context
+                    const isDeclaration = (
+                        (parent.type === 'VariableDeclarator' && parent.id === node) ||
+                        (parent.type === 'FunctionDeclaration' && parent.id === node) ||
+                        (parent.type === 'Property' && parent.key === node && !parent.computed) ||
+                        (parent.type === 'MemberExpression' && parent.property === node && !parent.computed)
+                    );
+                    
+                    if (!isDeclaration) {
+                        addVariableUsage(node.name, node);
+                    }
+                }
+                
+                // Recursively analyze child nodes
+                for (let key in node) {
+                    if (Object.prototype.hasOwnProperty.call(node, key) && key !== 'parent' && key !== 'loc' && key !== 'range') {
+                        let child = node[key];
+                        if (Array.isArray(child)) {
+                            child.forEach(item => {
+                                if (item && typeof item === 'object' && item.type) {
+                                    analyzeNode(item, node);
+                                }
+                            });
+                        } else if (child && typeof child === 'object' && child.type) {
+                            analyzeNode(child, node);
+                        }
+                    }
+                }
+                
+                // Handle scope exit
+                if (node.type === 'FunctionDeclaration' || 
+                    node.type === 'FunctionExpression' || 
+                    node.type === 'ArrowFunctionExpression' ||
+                    node.type === 'BlockStatement' ||
+                    node.type === 'Program') {
+                    
+                    exitScope();
+                }
+            }
+            
+            analyzeNode(ast);
+            
+            return issues;
+        }
+
         function detectWithASTSync(code, level, ignoreRegions, ignoreLines, ignoreNextLines) {
             const issues = [];
             
@@ -530,6 +724,14 @@
             }
             
             traverse(ast);
+            
+            // Level 2: Detect unused variables after AST traversal
+            if (level >= 2) {
+                const unusedVars = findUnusedVariablesBrowser(ast);
+                issues.push(...unusedVars.filter(issue => 
+                    !shouldIgnoreLineBrowser(issue.line, ignoreRegions, ignoreLines, ignoreNextLines)
+                ));
+            }
             
             // Level 2: Check for TODO/FIXME comments (still needs line-by-line analysis)
             if (level >= 2) {
