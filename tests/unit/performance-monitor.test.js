@@ -141,6 +141,9 @@ describe('PerformanceMonitor', () => {
         it('should call database methods for sustained threshold checking', async () => {
             const metrics = { cpu: 85, memory: 60 };
             
+            // Mock calculateAverages to return values above threshold
+            performanceMonitor.calculateAverages = jest.fn().mockResolvedValue({ cpu: 85, memory: 60, eventLoop: 5 });
+            
             // Mock the database to return sustained: true
             performanceMonitor.db.checkSustainedMetric.mockResolvedValueOnce({ sustained: true });
             performanceMonitor.db.recordAlert.mockResolvedValueOnce(1);
@@ -155,6 +158,9 @@ describe('PerformanceMonitor', () => {
 
         it('should call database methods for memory threshold checking', async () => {
             const metrics = { cpu: 50, memory: 90 };
+            
+            // Mock calculateAverages to return values above threshold
+            performanceMonitor.calculateAverages = jest.fn().mockResolvedValue({ cpu: 50, memory: 90, eventLoop: 5 });
             
             // Mock the database to return sustained: true
             performanceMonitor.db.checkSustainedMetric.mockResolvedValueOnce({ sustained: true });
