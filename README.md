@@ -61,7 +61,7 @@ let node = RED.nodes.getNode(this);
 
 // ✅ Will NOT be flagged (underscore prefix)
 let _temp = "intentionally unused";
-
+ 
 // ✅ Will NOT be flagged (function parameters)
 function processData(input, options) {
     return input.value; // 'options' is not flagged
