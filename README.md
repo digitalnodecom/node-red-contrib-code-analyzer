@@ -25,13 +25,63 @@ Detects only the most critical debugging artifacts:
 
 ### Level 2: Standard Issues
 Includes Level 1 plus:
+- **console.log() statements**: Console logging debugging statements
+- **debugger statements**: JavaScript debugger breakpoints
 - **node.warn() statements**: Debugging output using Node-RED's warning system
 - **TODO/FIXME comments**: Development reminders with colon syntax (`TODO:`, `FIXME:`)
+- **unused variables**: Variables declared but never referenced in the code
 
 ### Level 3: Comprehensive Issues
 Includes Level 2 plus:
 - **Hardcoded test values**: Common test patterns like `= "test"`, `= "debug"`, `= "temp"`, `= 123`
 - **Multiple empty lines**: 2 or more consecutive empty lines
+
+## Unused Variables Detection
+
+The analyzer includes intelligent unused variable detection that identifies variables declared but never referenced in your code. This feature helps keep your Node-RED functions clean and performant by flagging potential dead code.
+
+### Features
+
+- **Smart exemptions**: Automatically excludes Node-RED globals (`msg`, `node`, `context`, `flow`, `global`, `env`, `RED`)
+- **Intentional ignoring**: Variables prefixed with underscore (`_unused`) are ignored
+- **Function parameters**: Function parameters are never flagged as unused
+- **Function declarations**: Function declarations are excluded (may be for external use)
+- **Precise highlighting**: Only highlights the variable name, not the entire declaration line
+
+### Examples
+
+```javascript
+// ❌ Will be flagged as unused
+let unusedVariable = "some value";
+let data = fetchData();
+
+// ✅ Will NOT be flagged (Node-RED globals)
+let msg = {}; 
+let node = RED.nodes.getNode(this);
+
+// ✅ Will NOT be flagged (underscore prefix)
+let _temp = "intentionally unused";
+
+// ✅ Will NOT be flagged (function parameters)
+function processData(input, options) {
+    return input.value; // 'options' is not flagged
+}
+
+// Usage example that avoids unused variable warnings
+let data = fetchData();
+let result = processData(data);
+node.send({payload: result});
+```
+
+### Multiple Variable Declarations
+
+When multiple variables are declared on one line, only the unused ones are highlighted:
+
+```javascript
+let used = 1, unused = 2, alsoUsed = 3;
+console.log(used, alsoUsed); 
+// Only 'unused' will be flagged and highlighted
+```
 
 ## Ignore Directives
 
@@ -67,7 +117,7 @@ node.warn("debug"); // This line will be flagged
 ### What Gets Ignored
 All detection levels respect ignore directives:
 - **Level 1**: Top-level return statements
-- **Level 2**: node.warn() calls and TODO/FIXME comments  
+- **Level 2**: console.log(), debugger statements, node.warn() calls, TODO/FIXME comments, and unused variables
 - **Level 3**: Hardcoded values and excessive empty lines
 
 ## Performance Monitoring
@@ -189,7 +239,7 @@ GitHub Actions automatically runs:
 ### Detection Levels
 
 - **Level 1**: Critical issues (top-level returns)
-- **Level 2**: Important issues (node.warn, TODO comments)
+- **Level 2**: Important issues (console.log, debugger, node.warn, TODO comments, unused variables)
 - **Level 3**: Minor issues (hardcoded values, formatting)
 
 ### Code Analysis
