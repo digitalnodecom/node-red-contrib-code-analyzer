@@ -170,28 +170,30 @@ describe('Detector - detectDebuggingTraits', () => {
         
         test('should detect multiple consecutive empty lines in middle of code', () => {
             // Arrange
-            const code = 'var x = 1;\n\n\n\nvar y = 2;';
+            const code = 'var x = 1;\n\n\n\nvar y = 2;\nconsole.log(x, y);';
             
             // Act
             const issues = detectDebuggingTraits(code, 3);
+            const emptyLineIssues = issues.filter(issue => issue.type === 'multiple-empty-lines');
             
             // Assert
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('multiple-empty-lines');
-            expect(issues[0].message).toContain('3 consecutive empty lines');
+            expect(emptyLineIssues).toHaveLength(1);
+            expect(emptyLineIssues[0].type).toBe('multiple-empty-lines');
+            expect(emptyLineIssues[0].message).toContain('3 consecutive empty lines');
         });
         
         test('should detect multiple consecutive empty lines at end of code', () => {
             // Arrange
-            const code = 'var x = 1;\n\n\n\n';
+            const code = 'var x = 1;\nconsole.log(x);\n\n\n\n';
             
             // Act
             const issues = detectDebuggingTraits(code, 3);
+            const emptyLineIssues = issues.filter(issue => issue.type === 'multiple-empty-lines');
             
             // Assert
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe('multiple-empty-lines');
-            expect(issues[0].message).toContain('4 consecutive empty lines');
+            expect(emptyLineIssues).toHaveLength(1);
+            expect(emptyLineIssues[0].type).toBe('multiple-empty-lines');
+            expect(emptyLineIssues[0].message).toContain('4 consecutive empty lines');
         });
         
         test('should detect hardcoded test string', () => {
@@ -201,11 +203,12 @@ describe('Detector - detectDebuggingTraits', () => {
             
             // Act
             const issues = detectDebuggingTraits(code, 3);
+            const hardcodedIssues = issues.filter(issue => issue.type.startsWith('hardcoded-'));
             
             // Assert
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe(expectedIssueType);
-            expect(issues[0].message).toContain('hardcoded test');
+            expect(hardcodedIssues).toHaveLength(1);
+            expect(hardcodedIssues[0].type).toBe(expectedIssueType);
+            expect(hardcodedIssues[0].message).toContain('hardcoded test');
         });
         
         test('should detect hardcoded debug string', () => {
@@ -215,10 +218,11 @@ describe('Detector - detectDebuggingTraits', () => {
             
             // Act
             const issues = detectDebuggingTraits(code, 3);
+            const hardcodedIssues = issues.filter(issue => issue.type.startsWith('hardcoded-'));
             
             // Assert
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe(expectedIssueType);
+            expect(hardcodedIssues).toHaveLength(1);
+            expect(hardcodedIssues[0].type).toBe(expectedIssueType);
         });
         
         test('should detect hardcoded temp string', () => {
@@ -228,10 +232,11 @@ describe('Detector - detectDebuggingTraits', () => {
             
             // Act
             const issues = detectDebuggingTraits(code, 3);
+            const hardcodedIssues = issues.filter(issue => issue.type.startsWith('hardcoded-'));
             
             // Assert
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe(expectedIssueType);
+            expect(hardcodedIssues).toHaveLength(1);
+            expect(hardcodedIssues[0].type).toBe(expectedIssueType);
         });
         
         test('should detect hardcoded test number', () => {
@@ -241,10 +246,11 @@ describe('Detector - detectDebuggingTraits', () => {
             
             // Act
             const issues = detectDebuggingTraits(code, 3);
+            const hardcodedIssues = issues.filter(issue => issue.type.startsWith('hardcoded-'));
             
             // Assert
-            expect(issues).toHaveLength(1);
-            expect(issues[0].type).toBe(expectedIssueType);
+            expect(hardcodedIssues).toHaveLength(1);
+            expect(hardcodedIssues[0].type).toBe(expectedIssueType);
         });
         
         test('should NOT detect valid production values', () => {
@@ -253,9 +259,10 @@ describe('Detector - detectDebuggingTraits', () => {
             
             // Act
             const issues = detectDebuggingTraits(code, 3);
+            const hardcodedIssues = issues.filter(issue => issue.type.startsWith('hardcoded-'));
             
             // Assert
-            expect(issues).toHaveLength(0);
+            expect(hardcodedIssues).toHaveLength(0);
         });
         
     });
@@ -394,14 +401,16 @@ describe('Detector - detectDebuggingTraits', () => {
             const code = `const x = 1;
 const y = 2;
 node.warn("debug");
-const z = 4;`;
+const z = 4;
+console.log(x, y, z);`;
             
             // Act
             const issues = detectDebuggingTraits(code, 2);
+            const nodeWarnIssues = issues.filter(issue => issue.type === 'node-warn');
             
             // Assert
-            expect(issues).toHaveLength(1);
-            expect(issues[0].line).toBe(3);
+            expect(nodeWarnIssues).toHaveLength(1);
+            expect(nodeWarnIssues[0].line).toBe(3);
         });
         
     });

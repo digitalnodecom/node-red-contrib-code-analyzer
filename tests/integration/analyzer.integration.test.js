@@ -65,14 +65,15 @@ const mode = "test"; // Level 3 issue
                 analysisData.nodesWithIssues
             );
             
-            // Assert - Verify detection results
-            expect(detectedIssues).toHaveLength(4);
+            // Assert - Verify detection results (now includes unused-variable)
+            expect(detectedIssues).toHaveLength(5);
             expect(detectedIssues.map(i => i.type)).toEqual(
                 expect.arrayContaining([
                     'top-level-return',
                     'node-warn', 
                     'hardcoded-test',
-                    'todo-comment'
+                    'todo-comment',
+                    'unused-variable'
                 ])
             );
             
@@ -126,16 +127,16 @@ const mode = "test"; // Level 3`;
             expect(level1Issues).toHaveLength(1);
             expect(level1Issues[0].type).toBe('top-level-return');
             
-            // Act & Assert - Level 2 includes Level 1
+            // Act & Assert - Level 2 includes Level 1 + unused variables
             const level2Issues = detectDebuggingTraits(multiLevelCode, 2);
-            expect(level2Issues).toHaveLength(2);
+            expect(level2Issues).toHaveLength(3);
             expect(level2Issues.map(i => i.type)).toEqual(
-                expect.arrayContaining(['top-level-return', 'node-warn'])
+                expect.arrayContaining(['top-level-return', 'node-warn', 'unused-variable'])
             );
             
             // Act & Assert - Level 3 includes all
             const level3Issues = detectDebuggingTraits(multiLevelCode, 3);
-            expect(level3Issues).toHaveLength(3);
+            expect(level3Issues).toHaveLength(4);
             expect(level3Issues.map(i => i.type)).toEqual(
                 expect.arrayContaining(['top-level-return', 'node-warn', 'hardcoded-test'])
             );
