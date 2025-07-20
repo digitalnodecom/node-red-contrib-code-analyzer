@@ -138,6 +138,75 @@ When multiple `flow.set()` calls exist for the same variable, a beautiful dropdo
 - **Ctrl+F12** / **Cmd+F12**: Alternative keyboard shortcut (place cursor on flow.get() call)
 - **Escape**: Cancel multi-location selector
 
+## Variable Value Tooltips
+
+The analyzer provides intelligent hover tooltips that display the actual runtime values of flow and environment variables directly in your code editor, similar to modern IDEs like VS Code.
+
+### 🔍 Real-time Value Inspection
+
+Simply hover over any `flow.get()` or `env.get()` call to see its current value:
+
+```javascript
+// Hover over these to see their values:
+let userData = flow.get('userProfile');    // Shows: Flow variable: userProfile
+let apiKey = env.get('api_secret');        // Shows: Env variable: api_secret
+```
+
+### 📊 Smart Object Display
+
+The tooltips intelligently format different data types:
+
+- **Strings**: `"user@example.com"`
+- **Numbers**: `42`
+- **Booleans**: `true`
+- **Objects**: 📦 **Object{5}** with property previews and expandable JSON
+- **Arrays**: 🔢 **Array[1467]** with item previews and expandable JSON
+
+### 🗂️ Rich Object Inspection
+
+For complex objects and arrays, tooltips provide:
+
+- **Structure overview**: Quick preview of object properties and array items
+- **Type indicators**: Visual emoji indicators (📦 for objects, 🔢 for arrays)
+- **Smart truncation**: Shows first few items/properties with counts
+- **Expandable JSON**: Click "📋 View Full JSON" to see complete formatted data
+- **Performance optimized**: Handles large objects gracefully with intelligent truncation
+
+### 💡 Context-Aware Access
+
+- **Flow variables**: Retrieved from the current flow's context
+- **Environment variables**: Retrieved from flow-level environment configuration
+- **Current values**: Shows actual runtime values, not configuration defaults
+- **Flow-scoped**: Only shows variables accessible within the current flow
+
+### ✨ Example Tooltip Display
+
+```
+Flow variable: global-mappings
+
+📦 Object{5} - Click to expand in console
+
+brands: 🔢 Array[1]
+blacklist_brands: 🔢 Array[0]
+colors: 🔢 Array[5]
+countries: 🔢 Array[3]
+materials: 🔢 Array[1]
+version: 📦 Object{3}
+
+📋 View Full JSON
+{
+  "brands": [...],
+  "colors": [...],
+  // ... complete JSON structure
+}
+```
+
+### 🔧 Setup Requirements
+
+- **Code Analyzer node** must be deployed in the same flow
+- **Automatic operation**: No configuration needed, works immediately
+- **Monaco editor**: Integrates with Node-RED's built-in code editor
+
 ## Ignore Directives
 
 Sometimes you need to intentionally use debugging code or patterns that the analyzer would normally flag. You can use comment-based ignore directives to exclude specific lines or regions from analysis:
