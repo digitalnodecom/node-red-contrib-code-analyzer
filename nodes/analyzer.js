@@ -425,4 +425,198 @@ module.exports = function(RED) {
         const flowVariableMap = (RED.flowVariableMaps && RED.flowVariableMaps[flowId]) || {};
         res.json(flowVariableMap);
     });
+    
+    // API endpoint to get the actual value of a flow variable
+    RED.httpAdmin.get('/code-analyzer/flow-variable-value/:flowId/:variableName', function(req, res) {
+        try {
+            const flowId = req.params.flowId;
+            const variableName = decodeURIComponent(req.params.variableName);
+            
+            let value = undefined;
+            let found = false;
+            let debugInfo = {
+                nodesInFlow: 0,
+                nodesWithRuntime: 0,
+                nodesWithContext: 0,
+                contextErrors: []
+            };
+            
+            // Find any runtime node in the target flow to access its flow context
+            RED.nodes.eachNode(function(nodeConfig) {
+                if (nodeConfig.z === flowId) {
+                    debugInfo.nodesInFlow++;
+                    
+                    if (!found) {
+                        const runtimeNode = RED.nodes.getNode(nodeConfig.id);
+                        if (runtimeNode) {
+                            debugInfo.nodesWithRuntime++;
+                            
+                            if (runtimeNode.context) {
+                                debugInfo.nodesWithContext++;
+                                
+                                try {
+                                    const flowContext = runtimeNode.context().flow;
+                                    if (flowContext) {
+                                        // Try to get available keys for debugging
+                                        let availableKeys = [];
+                                        try {
+                                            if (typeof flowContext.keys === 'function') {
+                                                availableKeys = flowContext.keys();
+                                            }
+                                        } catch (keysError) {
+                                            // keys() might not be available
+                                        }
+                                        
+                                        debugInfo.availableKeys = availableKeys.slice(0, 10); // First 10 keys
+                                        debugInfo.totalKeys = availableKeys.length;
+                                        
+                                        // Use synchronous get - this is the correct approach
+                                        const contextValue = flowContext.get(variableName);
+                                        if (contextValue !== undefined) {
+                                            value = contextValue;
+                                            found = true;
+                                        } else {
+                                            // Try different storage backends if default didn't work
+                                            const storages = ['default', 'memory', 'file', 'localfilesystem'];
+                                            for (const storage of storages) {
+                                                try {
+                                                    const storageValue = flowContext.get(variableName, storage);
+                                                    if (storageValue !== undefined) {
+                                                        value = storageValue;
+                                                        found = true;
+                                                        debugInfo.foundInStorage = storage;
+                                                        break;
+                                                    }
+                                                } catch (storageError) {
+                                                    // Continue to next storage
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (contextError) {
+                                    debugInfo.contextErrors.push(contextError.message);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Return the result immediately
+            res.json({
+                variableName: variableName,
+                value: value,
+                found: found,
+                debug: {
+                    flowId: flowId,
+                    ...debugInfo
+                }
+            });
+            
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Error retrieving flow variable value',
+                details: error.message 
+            });
+        }
+    });
+    
+    // API endpoint to get the actual value of an environment variable
+    RED.httpAdmin.get('/code-analyzer/env-variable-value/:flowId/:variableName', function(req, res) {
+        try {
+            const flowId = req.params.flowId;
+            const variableName = decodeURIComponent(req.params.variableName);
+            let value;
+            let found = false;
+            
+            // First, try to get the environment variable from the flow's configuration
+            let flowNode = null;
+            RED.nodes.eachNode(function(nodeConfig) {
+                if (nodeConfig.type === 'tab' && nodeConfig.id === flowId) {
+                    flowNode = nodeConfig;
+                }
+            });
+            
+            // Check if the flow has environment variables defined
+            if (flowNode && flowNode.env) {
+                for (const envVar of flowNode.env) {
+                    if (envVar.name === variableName) {
+                        value = envVar.value;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            
+            // If not found in flow env, try accessing through Node-RED's env context
+            if (!found) {
+                RED.nodes.eachNode(function(nodeConfig) {
+                    if (!found && nodeConfig.z === flowId) {
+                        const runtimeNode = RED.nodes.getNode(nodeConfig.id);
+                        if (runtimeNode && runtimeNode.context) {
+                            try {
+                                const envContext = runtimeNode.context().env;
+                                if (envContext) {
+                                    const envValue = envContext.get(variableName);
+                                    if (envValue !== undefined) {
+                                        value = envValue;
+                                        found = true;
+                                    }
+                                }
+                            } catch (envError) {
+                                // Continue to next node
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Fallback to process.env if not found anywhere else
+            if (!found) {
+                const processValue = process.env[variableName];
+                if (processValue !== undefined) {
+                    value = processValue;
+                    found = true;
+                }
+            }
+            
+            res.json({ 
+                variableName: variableName, 
+                value: value,
+                found: found,
+                debug: {
+                    flowId: flowId,
+                    hasFlowNode: !!flowNode,
+                    flowHasEnv: !!(flowNode && flowNode.env),
+                    envCount: flowNode && flowNode.env ? flowNode.env.length : 0
+                }
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Error retrieving environment variable value',
+                details: error.message 
+            });
+        }
+    });
+
+    // Legacy endpoint for env variables (without flow context) - keep for backward compatibility
+    RED.httpAdmin.get('/code-analyzer/env-variable-value/:variableName', function(req, res) {
+        try {
+            const variableName = decodeURIComponent(req.params.variableName);
+            
+            // Just check process.env for legacy calls
+            const value = process.env[variableName];
+            
+            res.json({ 
+                variableName: variableName, 
+                value: value,
+                found: value !== undefined
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Error retrieving environment variable value',
+                details: error.message 
+            });
+        }
+    });
 };
