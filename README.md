@@ -8,6 +8,7 @@ A comprehensive Node-RED package that provides background services to detect deb
 ## Features
 
 - **🔍 Static Code Analysis**: Detects debugging artifacts in function nodes
+- **🧭 Flow Variable Navigation**: Click-to-find-source for flow.get() calls with IDE-like navigation
 - **📊 Queue Monitoring**: Monitors delay node queues and sends alerts
 - **⚡ Performance Monitoring**: Tracks CPU, memory, and event loop metrics with sustained alerting
 - **🔔 Slack Integration**: Sends formatted alerts to Slack channels
@@ -83,6 +84,60 @@ console.log(used, alsoUsed);
 // Only 'unused' will be flagged and highlighted
 ```
 
+## Flow Variable Navigation
+
+The analyzer provides IDE-like navigation for flow variables, allowing you to instantly jump from `flow.get()` calls to their corresponding `flow.set()` definitions within the same flow.
+
+### 🎯 Click-to-Find-Source
+
+Navigate from any `flow.get()` call to its definition:
+
+1. **Ctrl+Click** (or **Cmd+Click** on Mac) on any variable name in `flow.get('variableName')` calls
+2. **Instantly navigate** to the corresponding `flow.set('variableName', value)` location
+3. **Automatic highlighting** of the target line with temporary visual feedback
+
+```javascript
+// Click on 'userData' in this line:
+let user = flow.get('userData');
+
+// Automatically navigates to:
+flow.set('userData', { name: 'John', id: 123 });
+```
+
+### 🎨 Multiple Location Selector
+
+When multiple `flow.set()` calls exist for the same variable, a beautiful dropdown selector appears:
+
+- **Elegant modal interface** with hover effects and smooth animations
+- **Clear location information**: Node name, line number, and node ID preview
+- **Multiple interaction options**: Click selection, Escape to cancel, or click outside
+- **Smart navigation**: Opens target node editor and highlights exact line
+
+### ✨ Smart Features
+
+- **Flow-scoped search**: Only searches within the current flow for better organization
+- **Real-time AST parsing**: Accurately detects flow variables using JavaScript AST analysis
+- **Graceful error handling**: User-friendly messages when definitions aren't found
+- **Non-intrusive**: Only appears when analyzer node is present in the flow
+
+### 🔧 Setup Requirements
+
+- **Code Analyzer node** must be deployed in the same flow as your function nodes
+- **Automatic scanning** runs in the background (configurable interval)
+- **No manual setup** required - works immediately after deployment
+
+### 💡 Usage Tips
+
+- **Group related flows**: Keep `flow.set()` and `flow.get()` calls in the same flow for best navigation
+- **Descriptive node names**: Use clear function node names for better navigation experience
+- **Recent scanning**: The analyzer scans automatically, but you can trigger manual scans by sending messages to the analyzer node
+
+### 🎯 Keyboard Shortcuts
+
+- **Ctrl+Click** / **Cmd+Click**: Navigate to flow variable source
+- **Ctrl+F12** / **Cmd+F12**: Alternative keyboard shortcut (place cursor on flow.get() call)
+- **Escape**: Cancel multi-location selector
+
 ## Ignore Directives
 
 Sometimes you need to intentionally use debugging code or patterns that the analyzer would normally flag. You can use comment-based ignore directives to exclude specific lines or regions from analysis:
@@ -156,6 +211,7 @@ npm install node-red-contrib-code-analyzer
 1. Add the "Code Analyzer" node to your Node-RED flow
 2. Configure the detection settings in the node properties
 3. Deploy the flow to start monitoring
+4. **Flow Variable Navigation**: Ctrl+Click on any `flow.get('variableName')` call to navigate to its `flow.set()` definition
 
 ## Development
 
@@ -248,6 +304,7 @@ GitHub Actions automatically runs:
 - **Scan Interval**: Configurable automatic scanning frequency
 - **Auto Start**: Automatically begin scanning on deployment
 - **Monaco Integration**: Real-time editor highlighting and markers
+- **Flow Variable Navigation**: Click-to-find-source for flow variables with multi-location selector
 
 ### Queue Monitoring
 

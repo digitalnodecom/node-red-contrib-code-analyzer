@@ -1,8 +1,14 @@
 const { detectDebuggingTraits } = require('../lib/detector');
+const { findFlowVariables, adjustLineNumbers } = require('../lib/ast-detector');
 const SlackNotifier = require('../lib/slack-notifier');
 const PerformanceMonitor = require('../lib/performance-monitor');
 
 module.exports = function(RED) {
+    // Global storage for flow variable maps
+    if (!RED.flowVariableMaps) {
+        RED.flowVariableMaps = {};
+    }
+    
     function CodeAnalyzer(config) {
         RED.nodes.createNode(this, config);
         const node = this;
@@ -43,6 +49,7 @@ module.exports = function(RED) {
         // Track performance monitoring
         node.lastPerformanceAlertTime = 0;
         
+        
         // Initialize Slack notifier
         const slackNotifier = new SlackNotifier(node.slackWebhookUrl, RED);
         
@@ -72,6 +79,9 @@ module.exports = function(RED) {
             let nodesWithIssues = 0;
             
             const currentFlowId = node.z;
+            
+            // Collect flow variables across all function nodes in the current flow
+            const flowVariableMap = {};
                 
             RED.nodes.eachNode(function (nodeConfig) {
                 if (nodeConfig.type === 'function' && nodeConfig.z === currentFlowId) {
@@ -82,6 +92,83 @@ module.exports = function(RED) {
                 }
             });
             
+            // First pass: collect all flow variables
+            // Get flow name for better debugging
+            let flowName = `Flow ${currentFlowId.substring(0, 8)}`;
+            RED.nodes.eachNode(function(n) {
+                if (n.type === 'tab' && n.id === currentFlowId) {
+                    flowName = n.label || n.name || flowName;
+                }
+            });
+            
+            RED.nodes.eachNode(function (nodeConfig) {
+                if (nodeConfig.type === 'function' && nodeConfig.func && nodeConfig.z === currentFlowId) {
+                    try {
+                        const { parseScript } = require('meriyah');
+                        let ast;
+                        
+                        // Parse the code to AST
+                        try {
+                            ast = parseScript(nodeConfig.func, {
+                                loc: true,
+                                ranges: true,
+                                module: false,
+                                webcompat: true
+                            });
+                        } catch (scriptError) {
+                            // If script parsing fails due to top-level return, wrap in function
+                            if (scriptError.message.includes('Illegal return statement')) {
+                                const wrappedCode = `function nodeRedWrapper() {\n${nodeConfig.func}\n}`;
+                                ast = parseScript(wrappedCode, {
+                                    loc: true,
+                                    ranges: true,
+                                    module: false,
+                                    webcompat: true
+                                });
+                                // Adjust line numbers for wrapped code
+                                adjustLineNumbers(ast, -1);
+                            } else {
+                                throw scriptError;
+                            }
+                        }
+                        
+                        const flowVars = findFlowVariables(ast);
+                        
+                        flowVars.forEach(flowVar => {
+                            if (!flowVariableMap[flowVar.variableName]) {
+                                flowVariableMap[flowVar.variableName] = {
+                                    gets: [],
+                                    sets: []
+                                };
+                            }
+                            
+                            const varInfo = {
+                                nodeId: nodeConfig.id,
+                                nodeName: nodeConfig.name || `Function Node ${nodeConfig.id.substring(0, 8)}`,
+                                line: flowVar.line,
+                                column: flowVar.column,
+                                endColumn: flowVar.endColumn,
+                                fullCallStart: flowVar.fullCallStart,
+                                fullCallEnd: flowVar.fullCallEnd
+                            };
+                            
+                            if (flowVar.type === 'flow-get') {
+                                flowVariableMap[flowVar.variableName].gets.push(varInfo);
+                            } else if (flowVar.type === 'flow-set') {
+                                flowVariableMap[flowVar.variableName].sets.push(varInfo);
+                            }
+                        });
+                    } catch (error) {
+                        // If flow variable parsing fails, continue with regular analysis
+                        // Silently continue
+                    }
+                }
+            });
+            
+            // Store flow variable map globally for editor access
+            RED.flowVariableMaps[currentFlowId] = flowVariableMap;
+            
+            // Second pass: analyze debugging traits
             RED.nodes.eachNode(function (nodeConfig) {
                 if (nodeConfig.type === 'function' && nodeConfig.func && nodeConfig.z === currentFlowId) {
                     const issues = detectDebuggingTraits(nodeConfig.func, node.detectionLevel);
@@ -324,5 +411,18 @@ module.exports = function(RED) {
         const path = require('path');
         const dbPath = path.join(process.cwd(), 'performance_metrics.db');
         res.json({ dbPath: dbPath });
+    });
+    
+    // API endpoint to get all flow variable mappings (must be before /:flowId route)
+    RED.httpAdmin.get('/code-analyzer/flow-variables/all-flows', function(req, res) {
+        const allFlowMaps = RED.flowVariableMaps || {};
+        res.json(allFlowMaps);
+    });
+    
+    // API endpoint to get flow variable mapping for a specific flow
+    RED.httpAdmin.get('/code-analyzer/flow-variables/:flowId', function(req, res) {
+        const flowId = req.params.flowId;
+        const flowVariableMap = (RED.flowVariableMaps && RED.flowVariableMaps[flowId]) || {};
+        res.json(flowVariableMap);
     });
 };
