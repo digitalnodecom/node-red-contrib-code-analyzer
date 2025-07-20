@@ -849,6 +849,153 @@
             }
         }
         
+        // Helper function to navigate to a specific flow variable location
+        function navigateToLocation(targetSet, variableName) {
+            const targetNode = RED.nodes.node(targetSet.nodeId);
+            if (targetNode) {
+                // Open the target node's editor
+                RED.editor.edit(targetNode);
+                
+                // Wait a bit for editor to open, then highlight the line
+                setTimeout(() => {
+                    monaco.editor.getEditors().forEach(editorInstance => {
+                        if (editorInstance.getModel()) {
+                            // Jump to the line and highlight
+                            editorInstance.revealLineInCenter(targetSet.line);
+                            editorInstance.setPosition({ 
+                                lineNumber: targetSet.line, 
+                                column: targetSet.column 
+                            });
+                            
+                            // Highlight the range temporarily
+                            const decoration = editorInstance.deltaDecorations([], [{
+                                range: new monaco.Range(targetSet.line, targetSet.column, targetSet.line, targetSet.endColumn),
+                                options: {
+                                    className: 'highlighted-line-error',
+                                    isWholeLine: false
+                                }
+                            }]);
+                            
+                            // Remove highlight after 3 seconds
+                            setTimeout(() => {
+                                editorInstance.deltaDecorations(decoration, []);
+                            }, 3000);
+                        }
+                    });
+                }, 500);
+                
+                RED.notify(`Navigated to flow.set('${variableName}') in ${targetSet.nodeName}`, 'success');
+            } else {
+                RED.notify(`Could not find node ${targetSet.nodeName}`, 'error');
+            }
+        }
+        
+        // Show a nice dropdown selector for multiple flow variable locations
+        function showFlowVariableSelector(setLocations, variableName, callback) {
+            // Remove any existing selector
+            $('#flow-variable-selector').remove();
+            
+            // Create the dropdown container
+            const selectorHtml = `
+                <div id="flow-variable-selector" style="
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: white;
+                    border: 2px solid #ccc;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                    padding: 20px;
+                    z-index: 10000;
+                    min-width: 400px;
+                    max-width: 600px;
+                    font-family: 'Helvetica Neue', Arial, sans-serif;
+                ">
+                    <div style="margin-bottom: 15px;">
+                        <h3 style="margin: 0 0 10px 0; color: #333;">
+                            Multiple flow.set('${variableName}') locations found
+                        </h3>
+                        <p style="margin: 0; color: #666; font-size: 14px;">
+                            Choose which location to navigate to:
+                        </p>
+                    </div>
+                    <div id="flow-variable-options" style="margin-bottom: 20px;">
+                        ${setLocations.map((set, index) => `
+                            <div class="flow-variable-option" data-index="${index}" style="
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                padding: 12px;
+                                margin: 8px 0;
+                                border: 1px solid #ddd;
+                                border-radius: 6px;
+                                cursor: pointer;
+                                transition: all 0.2s ease;
+                                background: #f9f9f9;
+                            " onmouseover="this.style.background='#e3f2fd'; this.style.borderColor='#2196f3';" 
+                               onmouseout="this.style.background='#f9f9f9'; this.style.borderColor='#ddd';">
+                                <div>
+                                    <strong style="color: #333;">${set.nodeName}</strong>
+                                    <div style="font-size: 12px; color: #666;">Line ${set.line}</div>
+                                </div>
+                                <div style="font-size: 12px; color: #999;">
+                                    ${set.nodeId.substring(0, 8)}...
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="text-align: right;">
+                        <button id="flow-variable-cancel" style="
+                            background: #ccc;
+                            border: none;
+                            padding: 8px 16px;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            margin-right: 10px;
+                            font-size: 14px;
+                        ">Cancel</button>
+                    </div>
+                </div>
+                <div id="flow-variable-overlay" style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.5);
+                    z-index: 9999;
+                "></div>
+            `;
+            
+            // Add to page
+            $('body').append(selectorHtml);
+            
+            // Add click handlers
+            $('.flow-variable-option').click(function() {
+                const index = parseInt($(this).data('index'));
+                const selectedSet = setLocations[index];
+                $('#flow-variable-selector').remove();
+                $('#flow-variable-overlay').remove();
+                callback(selectedSet);
+            });
+            
+            $('#flow-variable-cancel, #flow-variable-overlay').click(function() {
+                $('#flow-variable-selector').remove();
+                $('#flow-variable-overlay').remove();
+                callback(null);
+            });
+            
+            // Add keyboard support
+            $(document).one('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    $('#flow-variable-selector').remove();
+                    $('#flow-variable-overlay').remove();
+                    callback(null);
+                }
+            });
+        }
+        
         // Navigation helper for flow variables
         function navigateToFlowVariable(variableName, currentNodeId) {
             const currentFlowId = RED.workspaces.active();
@@ -914,64 +1061,18 @@
                         targetSet = sameNodeSets[0];
                     }
                     
-                    // If multiple options, let user choose
+                    // If multiple options, show a dropdown for user to choose
                     if (variable.sets.length > 1) {
-                        const options = variable.sets.map((set, index) => 
-                            `${index + 1}. ${set.nodeName} (line ${set.line})`
-                        ).join('\n');
-                        
-                        const choice = prompt(
-                            `Found ${variable.sets.length} flow.set('${variableName}') calls:\n\n${options}\n\nEnter number (1-${variable.sets.length}) or press Cancel:`
-                        );
-                        
-                        if (choice && !isNaN(choice)) {
-                            const choiceIndex = parseInt(choice) - 1;
-                            if (choiceIndex >= 0 && choiceIndex < variable.sets.length) {
-                                targetSet = variable.sets[choiceIndex];
+                        showFlowVariableSelector(variable.sets, variableName, (selectedSet) => {
+                            if (selectedSet) {
+                                navigateToLocation(selectedSet, variableName);
                             }
-                        } else if (choice === null) {
-                            return; // User cancelled
-                        }
+                        });
+                        return; // Exit here, navigation will happen in callback
                     }
                     
-                    // Navigate to target node and line
-                    const targetNode = RED.nodes.node(targetSet.nodeId);
-                    if (targetNode) {
-                        // Open the target node's editor
-                        RED.editor.edit(targetNode);
-                        
-                        // Wait a bit for editor to open, then highlight the line
-                        setTimeout(() => {
-                            monaco.editor.getEditors().forEach(editorInstance => {
-                                if (editorInstance.getModel()) {
-                                    // Jump to the line and highlight
-                                    editorInstance.revealLineInCenter(targetSet.line);
-                                    editorInstance.setPosition({ 
-                                        lineNumber: targetSet.line, 
-                                        column: targetSet.column 
-                                    });
-                                    
-                                    // Highlight the range temporarily
-                                    const decoration = editorInstance.deltaDecorations([], [{
-                                        range: new monaco.Range(targetSet.line, targetSet.column, targetSet.line, targetSet.endColumn),
-                                        options: {
-                                            className: 'highlighted-line-error',
-                                            isWholeLine: false
-                                        }
-                                    }]);
-                                    
-                                    // Remove highlight after 3 seconds
-                                    setTimeout(() => {
-                                        editorInstance.deltaDecorations(decoration, []);
-                                    }, 3000);
-                                }
-                            });
-                        }, 500);
-                        
-                        RED.notify(`Navigated to flow.set('${variableName}') in ${targetSet.nodeName}`, 'success');
-                    } else {
-                        RED.notify(`Could not find node ${targetSet.nodeName}`, 'error');
-                    }
+                    // Navigate to the single target
+                    navigateToLocation(targetSet, variableName);
             }
         }
         
