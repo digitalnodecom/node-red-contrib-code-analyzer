@@ -15,6 +15,7 @@ A comprehensive Node-RED package that provides background services to detect deb
 - **📈 Real-time Monitoring**: Continuous background scanning
 - **🎯 Configurable Detection**: Multiple detection levels and thresholds
 - **🖥️ Monaco Editor Integration**: Real-time highlighting and problem markers
+- **📊 Real-time Quality Dashboard**: Web-based dashboard with trends, analytics, and performance metrics
 
 ## Detection Levels
 
@@ -137,6 +138,55 @@ When multiple `flow.set()` calls exist for the same variable, a beautiful dropdo
 - **Ctrl+Click** / **Cmd+Click**: Navigate to flow variable source
 - **Ctrl+F12** / **Cmd+F12**: Alternative keyboard shortcut (place cursor on flow.get() call)
 - **Escape**: Cancel multi-location selector
+
+## Real-time Quality Dashboard
+
+The analyzer includes a comprehensive web-based dashboard that provides real-time insights into code quality trends, technical debt accumulation, and system performance metrics.
+
+### 🚀 Dashboard Features
+
+- **Live Quality Metrics**: Real-time overall quality score with letter grades (A+ to F)
+- **Technical Debt Tracking**: Visual representation of code quality degradation over time
+- **Flow-by-Flow Analysis**: Detailed breakdown of quality metrics for each Node-RED flow
+- **Most Problematic Nodes**: Identify the function nodes requiring immediate attention
+- **Performance Monitoring**: CPU, memory, and event loop lag visualization
+- **Historical Trends**: 24-hour and 7-day trend analysis with smart change detection
+- **Alert Management**: Real-time display of system alerts and threshold violations
+
+### 📈 Quality Scoring System
+
+The dashboard uses a sophisticated scoring algorithm that considers:
+
+- **Issue Severity**: Critical issues (return statements, debugger) heavily penalized
+- **Code Complexity**: Cyclomatic complexity, nesting depth, and function length
+- **Technical Debt Ratio**: Issues per node across your entire Node-RED instance
+- **Trend Analysis**: Quality improvement or degradation over time
+
+### 🎯 Dashboard Sections
+
+1. **Overview Cards**: At-a-glance system health with quality score, technical debt, flow count, and complexity
+2. **Quality Trends Chart**: Time-series visualization of quality score changes
+3. **Performance Metrics**: Real-time system performance with CPU and memory usage
+4. **Flow Quality Breakdown**: Per-flow analysis with health percentages and issue counts
+5. **Problematic Nodes**: Ranked list of nodes requiring immediate attention
+6. **Recent Alerts**: System alerts and performance threshold violations
+
+### 🔧 Dashboard Access
+
+Access the dashboard through:
+
+1. **Node Configuration**: Click "Open Real-time Code Quality Dashboard" in the Code Analyzer node settings
+2. **Direct URL**: Navigate to `/code-analyzer/dashboard` in your Node-RED instance
+3. **Auto-refresh**: Dashboard automatically updates every 5 minutes with latest data
+
+### ⚡ Performance Impact
+
+The dashboard is designed for minimal performance impact:
+
+- **Efficient Database**: SQLite storage with automatic data pruning
+- **Smart Caching**: API endpoints cache expensive calculations
+- **Background Processing**: Quality calculations run during normal scan cycles
+- **Configurable Retention**: Adjustable data retention (1-30 days)
 
 ## Ignore Directives
 

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Quality Dashboard - Node-RED Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            transition: transform 0.2s ease-in-out;
+        }
+        .metric-card {
+            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+        }
+        .trend-up { color: #10b981; }
+        .trend-down { color: #ef4444; }
+        .trend-stable { color: #6b7280; }
+        .quality-excellent { color: #10b981; }
+        .quality-good { color: #84cc16; }
+        .quality-fair { color: #f59e0b; }
+        .quality-poor { color: #ef4444; }
+        .loading-spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="gradient-bg shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div class="flex items-center">
+                    <i class="fas fa-chart-line text-white text-3xl mr-3"></i>
+                    <div>
+                        <h1 class="text-3xl font-bold text-white">Code Quality Dashboard</h1>
+                        <p class="text-blue-100">Real-time Node-RED code analysis and metrics</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-white text-right">
+                        <div class="text-sm opacity-75">Last Updated</div>
+                        <div id="lastUpdated" class="font-semibold">--</div>
+                    </div>
+                    <button id="refreshBtn" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-lg transition-colors">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Loading State -->
+        <div id="loadingState" class="flex justify-center items-center py-16">
+            <div class="text-center">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <p class="text-gray-600">Loading dashboard data...</p>
+            </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboardContent" class="hidden">
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Overall Quality Score -->
+                <div class="metric-card rounded-lg shadow-lg p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Overall Quality</p>
+                            <p id="overallQuality" class="text-3xl font-bold">--</p>
+                            <div id="qualityGrade" class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-2">
+                                <span id="gradeText">--</span>
+                            </div>
+                        </div>
+                        <div class="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-award text-blue-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center">
+                        <i id="qualityTrend" class="fas fa-arrow-up text-sm mr-1"></i>
+                        <span id="qualityChange" class="text-sm font-medium">--</span>
+                    </div>
+                </div>
+
+                <!-- Technical Debt -->
+                <div class="metric-card rounded-lg shadow-lg p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Technical Debt</p>
+                            <p id="technicalDebt" class="text-3xl font-bold text-orange-600">--</p>
+                            <p class="text-xs text-gray-500 mt-2">Issues per node ratio</p>
+                        </div>
+                        <div class="h-12 w-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-exclamation-triangle text-orange-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center">
+                        <span id="totalIssues" class="text-sm font-medium text-gray-700">-- total issues</span>
+                    </div>
+                </div>
+
+                <!-- Flows Analyzed -->
+                <div class="metric-card rounded-lg shadow-lg p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Flows Analyzed</p>
+                            <p id="totalFlows" class="text-3xl font-bold text-green-600">--</p>
+                            <p class="text-xs text-gray-500 mt-2">Active flows</p>
+                        </div>
+                        <div class="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-project-diagram text-green-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center">
+                        <span id="totalNodes" class="text-sm font-medium text-gray-700">-- function nodes</span>
+                    </div>
+                </div>
+
+                <!-- Complexity Score -->
+                <div class="metric-card rounded-lg shadow-lg p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Avg Complexity</p>
+                            <p id="avgComplexity" class="text-3xl font-bold text-purple-600">--</p>
+                            <p class="text-xs text-gray-500 mt-2">Complexity metric</p>
+                        </div>
+                        <div class="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-brain text-purple-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center">
+                        <i id="complexityTrend" class="fas fa-arrow-up text-sm mr-1"></i>
+                        <span id="complexityChange" class="text-sm font-medium">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- Quality Trends Chart -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold text-gray-900">Quality Trends (24h)</h3>
+                        <div class="flex space-x-2">
+                            <button class="trend-btn px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-800" data-hours="24">24h</button>
+                            <button class="trend-btn px-3 py-1 text-xs rounded-full bg-gray-100 text-gray-600" data-hours="168">7d</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="qualityTrendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Performance Metrics Chart -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold text-gray-900">System Performance</h3>
+                        <select id="performanceMetricSelect" class="text-sm border border-gray-300 rounded px-2 py-1">
+                            <option value="cpu">CPU Usage</option>
+                            <option value="memory">Memory Usage</option>
+                        </select>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="performanceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flow Analysis and Problematic Nodes -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Flow Quality Breakdown -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-6">Flow Quality Breakdown</h3>
+                    <div id="flowsList" class="space-y-4">
+                        <!-- Flow items will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Most Problematic Nodes -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-6">Most Problematic Nodes</h3>
+                    <div id="problematicNodesList" class="space-y-4">
+                        <!-- Problematic nodes will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Section -->
+            <div class="mt-8">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-6">Recent Alerts</h3>
+                    <div id="alertsList" class="space-y-3">
+                        <!-- Alerts will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

@@ -2,6 +2,8 @@ const { detectDebuggingTraits } = require('../lib/detector');
 const { findFlowVariables, adjustLineNumbers } = require('../lib/ast-detector');
 const SlackNotifier = require('../lib/slack-notifier');
 const PerformanceMonitor = require('../lib/performance-monitor');
+const QualityMetrics = require('../lib/quality-metrics');
+const PerformanceDatabase = require('../lib/performance-db');
 
 module.exports = function(RED) {
     // Global storage for flow variable maps
@@ -56,6 +58,14 @@ module.exports = function(RED) {
         // Initialize performance monitor
         const performanceMonitor = new PerformanceMonitor();
         performanceMonitor.updateConfig(node.performanceThresholds);
+        
+        // Initialize quality metrics calculator
+        const qualityMetrics = new QualityMetrics();
+        
+        // Initialize database for quality metrics storage
+        if (!RED.qualityDatabase) {
+            RED.qualityDatabase = new PerformanceDatabase();
+        }
         
         let scanTimer;
         let queueMonitorTimer;
@@ -168,9 +178,11 @@ module.exports = function(RED) {
             // Store flow variable map globally for editor access
             RED.flowVariableMaps[currentFlowId] = flowVariableMap;
             
-            // Second pass: analyze debugging traits
+            // Second pass: analyze debugging traits and calculate quality metrics
+            const functionNodes = [];
             RED.nodes.eachNode(function (nodeConfig) {
                 if (nodeConfig.type === 'function' && nodeConfig.func && nodeConfig.z === currentFlowId) {
+                    functionNodes.push(nodeConfig);
                     const issues = detectDebuggingTraits(nodeConfig.func, node.detectionLevel);
                     
                     if (issues.length > 0) {
@@ -212,6 +224,41 @@ module.exports = function(RED) {
                     }
                 }
             });
+            
+            // Calculate and store quality metrics
+            try {
+                const flowQualityMetrics = qualityMetrics.calculateFlowQualityMetrics(functionNodes, node.detectionLevel);
+                
+                // Store flow-level metrics
+                if (RED.qualityDatabase && RED.qualityDatabase.initialized) {
+                    RED.qualityDatabase.storeCodeQualityMetrics(
+                        currentFlowId,
+                        flowName,
+                        flowQualityMetrics.totalIssues,
+                        flowQualityMetrics.nodesWithIssues,
+                        flowQualityMetrics.totalFunctionNodes,
+                        flowQualityMetrics.issueTypes,
+                        flowQualityMetrics.qualityScore,
+                        flowQualityMetrics.complexityScore
+                    ).catch(err => node.warn(`Failed to store flow quality metrics: ${err.message}`));
+                    
+                    // Store node-level metrics
+                    flowQualityMetrics.nodeMetrics.forEach(nodeMetric => {
+                        RED.qualityDatabase.storeNodeQualityMetrics(
+                            currentFlowId,
+                            nodeMetric.nodeId,
+                            nodeMetric.nodeName,
+                            nodeMetric.issuesCount,
+                            nodeMetric.issueDetails,
+                            nodeMetric.complexityScore,
+                            nodeMetric.linesOfCode,
+                            nodeMetric.qualityScore
+                        ).catch(err => node.warn(`Failed to store node quality metrics: ${err.message}`));
+                    });
+                }
+            } catch (error) {
+                node.warn(`Failed to calculate quality metrics: ${error.message}`);
+            }
             
             if (totalIssues > 0) {
                 node.status({
@@ -560,6 +607,372 @@ module.exports = function(RED) {
         } catch (error) {
             res.status(500).json({ 
                 error: 'Error retrieving environment variable value',
+                details: error.message 
+            });
+        }
+    });
+
+    // ===== DASHBOARD API ENDPOINTS =====
+    
+    // Serve dashboard static files
+    const path = require('path');
+    const fs = require('fs');
+    
+    // Diagnostic endpoint to test if routes are working
+    RED.httpAdmin.get('/code-analyzer/test', function(req, res) {
+        res.json({ 
+            message: 'Code analyzer routes are working!',
+            timestamp: new Date().toISOString(),
+            paths: {
+                dashboard: path.join(__dirname, '../static/dashboard.html'),
+                dashboardExists: fs.existsSync(path.join(__dirname, '../static/dashboard.html')),
+                javascript: path.join(__dirname, '../static/dashboard.js'),
+                javascriptExists: fs.existsSync(path.join(__dirname, '../static/dashboard.js'))
+            }
+        });
+    });
+    
+    RED.httpAdmin.get('/code-analyzer/dashboard', function(req, res) {
+        const dashboardPath = path.join(__dirname, '../static/dashboard.html');
+        if (fs.existsSync(dashboardPath)) {
+            res.sendFile(dashboardPath);
+        } else {
+            res.status(404).send('Dashboard not found. Please ensure dashboard files are installed.');
+        }
+    });
+    
+    // Serve dashboard JavaScript file
+    RED.httpAdmin.get('/code-analyzer/dashboard.js', function(req, res) {
+        const jsPath = path.join(__dirname, '../static/dashboard.js');
+        if (fs.existsSync(jsPath)) {
+            res.setHeader('Content-Type', 'application/javascript');
+            res.sendFile(jsPath);
+        } else {
+            res.status(404).send('Dashboard JavaScript not found');
+        }
+    });
+    
+    // Serve other static assets
+    RED.httpAdmin.get('/code-analyzer/static/:file', function(req, res) {
+        const filePath = path.join(__dirname, '../static', req.params.file);
+        if (fs.existsSync(filePath)) {
+            // Set appropriate content type
+            if (req.params.file.endsWith('.js')) {
+                res.setHeader('Content-Type', 'application/javascript');
+            } else if (req.params.file.endsWith('.css')) {
+                res.setHeader('Content-Type', 'text/css');
+            }
+            res.sendFile(filePath);
+        } else {
+            res.status(404).send('File not found');
+        }
+    });
+
+    // API: Get dashboard summary data
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/summary', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return res.status(503).json({ error: 'Quality database not available' });
+            }
+
+            const [qualitySummary, performanceStats] = await Promise.all([
+                RED.qualityDatabase.getQualitySummary(),
+                RED.qualityDatabase.getStats()
+            ]);
+
+            const qualityMetrics = new QualityMetrics();
+            
+            // Calculate system-wide trends
+            const systemTrends = qualityMetrics.calculateSystemQualityTrends(qualitySummary.flows);
+            
+            // Store system trends
+            await Promise.all([
+                RED.qualityDatabase.storeQualityTrend('overall_quality', systemTrends.overallQuality, systemTrends.flowCount, systemTrends.affectedNodes),
+                RED.qualityDatabase.storeQualityTrend('technical_debt', systemTrends.technicalDebt, systemTrends.flowCount, systemTrends.affectedNodes),
+                RED.qualityDatabase.storeQualityTrend('complexity', systemTrends.complexity, systemTrends.flowCount, systemTrends.affectedNodes)
+            ]);
+
+            const dashboardData = {
+                quality: {
+                    ...qualitySummary,
+                    systemTrends,
+                    overallGrade: qualityMetrics.getQualityGrade(systemTrends.overallQuality)
+                },
+                performance: performanceStats,
+                timestamp: new Date().toISOString()
+            };
+
+            res.json(dashboardData);
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to get dashboard summary', 
+                details: error.message 
+            });
+        }
+    });
+
+    // API: Get quality trends over time
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/quality-trends', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return res.status(503).json({ error: 'Quality database not available' });
+            }
+
+            const hours = parseInt(req.query.hours) || 24;
+            const limit = parseInt(req.query.limit) || 100;
+
+            const [qualityTrends, trendAnalysis] = await Promise.all([
+                RED.qualityDatabase.getCodeQualityTrends(hours, limit),
+                RED.qualityDatabase.getQualityTrendAnalysis('overall_quality', hours)
+            ]);
+
+            res.json({
+                trends: qualityTrends,
+                analysis: trendAnalysis,
+                timeframe: `${hours} hours`,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to get quality trends', 
+                details: error.message 
+            });
+        }
+    });
+
+    // API: Get most problematic nodes
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/problematic-nodes', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return res.status(503).json({ error: 'Quality database not available' });
+            }
+
+            const limit = parseInt(req.query.limit) || 20;
+            const problematicNodes = await RED.qualityDatabase.getMostProblematicNodes(limit);
+
+            const qualityMetrics = new QualityMetrics();
+            const enhancedNodes = problematicNodes.map(node => ({
+                ...node,
+                grade: qualityMetrics.getQualityGrade(node.quality_score),
+                recommendations: qualityMetrics.generateRecommendations({
+                    totalIssues: node.issues_count,
+                    complexityScore: node.complexity_score,
+                    issueTypes: [] // We could parse issue_details JSON here if needed
+                })
+            }));
+
+            res.json({
+                nodes: enhancedNodes,
+                count: enhancedNodes.length,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to get problematic nodes', 
+                details: error.message 
+            });
+        }
+    });
+
+    // API: Get detailed flow analysis with node-level issues
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/flows/:flowId/details', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return res.status(503).json({ error: 'Quality database not available' });
+            }
+
+            const flowId = req.params.flowId;
+            const qualityMetrics = new QualityMetrics();
+            
+            // Get current function nodes in this flow
+            const functionNodes = [];
+            let flowName = `Flow ${flowId.substring(0, 8)}`;
+            
+            // Find flow name
+            RED.nodes.eachNode(function(n) {
+                if (n.type === 'tab' && n.id === flowId) {
+                    flowName = n.label || n.name || flowName;
+                }
+            });
+            
+            // Get all function nodes in this flow with current analysis
+            RED.nodes.eachNode(function (nodeConfig) {
+                if (nodeConfig.type === 'function' && nodeConfig.func && nodeConfig.z === flowId) {
+                    const issues = detectDebuggingTraits(nodeConfig.func, 3); // Use level 3 for comprehensive analysis
+                    const linesOfCode = nodeConfig.func.split('\n').length;
+                    const complexityScore = qualityMetrics.calculateComplexityScore(nodeConfig.func);
+                    const nodeQualityScore = qualityMetrics.calculateNodeQualityScore(issues, linesOfCode);
+                    
+                    // Add severity and priority to each issue
+                    const enhancedIssues = issues.map(issue => {
+                        const severity = qualityMetrics.getIssueSeverity(issue.type);
+                        return {
+                            ...issue,
+                            severity: severity.level,
+                            priority: severity.priority,
+                            color: severity.color,
+                            weight: qualityMetrics.weights[issue.type] || 1
+                        };
+                    });
+                    
+                    // Sort issues by priority (critical first)
+                    enhancedIssues.sort((a, b) => a.priority - b.priority);
+                    
+                    functionNodes.push({
+                        nodeId: nodeConfig.id,
+                        nodeName: nodeConfig.name || `Function Node ${nodeConfig.id.substring(0, 8)}`,
+                        linesOfCode,
+                        complexityScore,
+                        qualityScore: nodeQualityScore,
+                        qualityGrade: qualityMetrics.getQualityGrade(nodeQualityScore),
+                        issues: enhancedIssues,
+                        issuesCount: issues.length,
+                        criticalIssues: enhancedIssues.filter(i => i.severity === 'critical').length,
+                        warningIssues: enhancedIssues.filter(i => i.severity === 'warning').length,
+                        infoIssues: enhancedIssues.filter(i => i.severity === 'info').length,
+                        recommendations: qualityMetrics.generateRecommendations({
+                            totalIssues: issues.length,
+                            complexityScore,
+                            issueTypes: issues.map(i => i.type)
+                        })
+                    });
+                }
+            });
+            
+            // Calculate flow-level metrics
+            const flowMetrics = qualityMetrics.calculateFlowQualityMetrics(
+                functionNodes.map(n => ({ 
+                    id: n.nodeId, 
+                    name: n.nodeName, 
+                    type: 'function', 
+                    func: 'placeholder' // We already calculated issues above
+                })), 
+                3
+            );
+            
+            // Sort nodes by severity (most problematic first)
+            functionNodes.sort((a, b) => {
+                if (a.criticalIssues !== b.criticalIssues) {
+                    return b.criticalIssues - a.criticalIssues;
+                }
+                if (a.warningIssues !== b.warningIssues) {
+                    return b.warningIssues - a.warningIssues;
+                }
+                return b.issuesCount - a.issuesCount;
+            });
+
+            const response = {
+                flowId,
+                flowName,
+                totalNodes: functionNodes.length,
+                nodesWithIssues: functionNodes.filter(n => n.issuesCount > 0).length,
+                totalIssues: functionNodes.reduce((sum, n) => sum + n.issuesCount, 0),
+                criticalIssues: functionNodes.reduce((sum, n) => sum + n.criticalIssues, 0),
+                warningIssues: functionNodes.reduce((sum, n) => sum + n.warningIssues, 0),
+                infoIssues: functionNodes.reduce((sum, n) => sum + n.infoIssues, 0),
+                overallQuality: flowMetrics.qualityScore,
+                overallComplexity: flowMetrics.complexityScore,
+                overallGrade: qualityMetrics.getQualityGrade(flowMetrics.qualityScore),
+                healthPercentage: Math.round((functionNodes.length - functionNodes.filter(n => n.issuesCount > 0).length) / Math.max(1, functionNodes.length) * 100),
+                nodes: functionNodes,
+                recommendations: qualityMetrics.generateRecommendations(flowMetrics),
+                timestamp: new Date().toISOString()
+            };
+
+            res.json(response);
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to get detailed flow analysis', 
+                details: error.message 
+            });
+        }
+    });
+
+    // API: Get flow quality details (simplified for trends)
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/flows/:flowId', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return res.status(503).json({ error: 'Quality database not available' });
+            }
+
+            const flowId = req.params.flowId;
+            const hours = parseInt(req.query.hours) || 24;
+            
+            // Get recent quality metrics for this flow
+            const qualityTrends = await RED.qualityDatabase.getCodeQualityTrends(hours, 100);
+            const flowTrends = qualityTrends.filter(trend => trend.flow_id === flowId);
+
+            if (flowTrends.length === 0) {
+                return res.status(404).json({ error: 'Flow not found or no recent data' });
+            }
+
+            const latestMetrics = flowTrends[0];
+            const qualityMetrics = new QualityMetrics();
+            const report = qualityMetrics.generateFlowQualityReport(latestMetrics);
+
+            res.json({
+                flow: report,
+                trends: flowTrends,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to get flow details', 
+                details: error.message 
+            });
+        }
+    });
+
+    // API: Get performance metrics for charts
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/performance-metrics', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return res.status(503).json({ error: 'Quality database not available' });
+            }
+
+            const hours = parseInt(req.query.hours) || 24;
+            const metricType = req.query.type || 'cpu';
+            const count = parseInt(req.query.count) || 50;
+
+            const [recentMetrics, averages, alertHistory] = await Promise.all([
+                RED.qualityDatabase.getRecentMetrics(metricType, count),
+                RED.qualityDatabase.getAverages(60), // 1 hour average
+                RED.qualityDatabase.getAlertHistory(20)
+            ]);
+
+            res.json({
+                metrics: recentMetrics,
+                averages: averages,
+                alerts: alertHistory.filter(alert => alert.metric_type === metricType),
+                metricType: metricType,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to get performance metrics', 
+                details: error.message 
+            });
+        }
+    });
+
+    // API: Get system alerts
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/alerts', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return res.status(503).json({ error: 'Quality database not available' });
+            }
+
+            const limit = parseInt(req.query.limit) || 50;
+            const alertHistory = await RED.qualityDatabase.getAlertHistory(limit);
+
+            res.json({
+                alerts: alertHistory,
+                count: alertHistory.length,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to get alerts', 
                 details: error.message 
             });
         }
