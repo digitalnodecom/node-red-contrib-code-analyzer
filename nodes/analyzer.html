@@ -1207,6 +1207,821 @@
                                             }
                                         }
                                     });
+
+                                    // Helper functions for variable value retrieval and display
+                                    async function getFlowVariableValue(variableName, flowId) {
+                                        try {
+                                            // Try to get the flow context and read the variable
+                                            const response = await fetch(`/code-analyzer/flow-variable-value/${flowId}/${encodeURIComponent(variableName)}`);
+                                            if (response.ok) {
+                                                const data = await response.json();
+                                                return data.value;
+                                            }
+                                        } catch (error) {
+                                            // Fallback to showing variable not found
+                                        }
+                                        
+                                        throw new Error('Variable not found');
+                                    }
+                                    
+                                    async function getEnvVariableValue(variableName, flowId) {
+                                        try {
+                                            // Get environment variable value using the flow-specific endpoint
+                                            const response = await fetch(`/code-analyzer/env-variable-value/${flowId}/${encodeURIComponent(variableName)}`);
+                                            if (response.ok) {
+                                                const data = await response.json();
+                                                return data.value;
+                                            }
+                                        } catch (error) {
+                                            // Fallback to showing variable not found
+                                        }
+                                        
+                                        throw new Error('Environment variable not found');
+                                    }
+                                    
+                                    function createValueDisplay(value, variableName, type) {
+                                        const typePrefix = type === 'flow' ? 'flow.get' : 'env.get';
+                                        
+                                        // Create header
+                                        let html = `<div style="font-family: 'Monaco', 'Menlo', monospace; font-size: 12px; max-width: 400px; max-height: 300px; overflow: auto;">`;
+                                        html += `<div style="font-weight: bold; margin-bottom: 8px; color: #0366d6;">${typePrefix}('${variableName}')</div>`;
+                                        
+                                        // Handle different value types
+                                        if (value === null) {
+                                            html += `<div style="color: #6a737d; font-style: italic;">null</div>`;
+                                        } else if (value === undefined) {
+                                            html += `<div style="color: #6a737d; font-style: italic;">undefined</div>`;
+                                        } else if (typeof value === 'string') {
+                                            const displayValue = value.length > 200 ? value.substring(0, 200) + '...' : value;
+                                            html += `<div style="color: #032f62;">"${escapeHtml(displayValue)}"</div>`;
+                                        } else if (typeof value === 'number') {
+                                            html += `<div style="color: #005cc5;">${value}</div>`;
+                                        } else if (typeof value === 'boolean') {
+                                            html += `<div style="color: #e36209;">${value}</div>`;
+                                        } else if (Array.isArray(value)) {
+                                            html += createArrayDisplay(value, 0);
+                                        } else if (typeof value === 'object') {
+                                            html += createObjectDisplay(value, 0);
+                                        } else {
+                                            html += `<div style="color: #6a737d;">${escapeHtml(String(value))}</div>`;
+                                        }
+                                        
+                                        html += `</div>`;
+                                        return html;
+                                    }
+
+                                    function createMarkdownValueDisplay(value, variableName, type) {
+                                        // Create better header
+                                        const headerText = type === 'flow' ? `Flow variable: ${variableName}` : `Env variable: ${variableName}`;
+                                        let markdown = `**${headerText}**\n\n`;
+                                        
+                                        // Handle different value types
+                                        if (value === null) {
+                                            markdown += `_null_`;
+                                        } else if (value === undefined) {
+                                            markdown += `_undefined_`;
+                                        } else if (typeof value === 'string') {
+                                            const displayValue = value.length > 500 ? value.substring(0, 500) + '...' : value;
+                                            markdown += `\`"${displayValue}"\``;
+                                        } else if (typeof value === 'number') {
+                                            markdown += `\`${value}\``;
+                                        } else if (typeof value === 'boolean') {
+                                            markdown += `\`${value}\``;
+                                        } else if (Array.isArray(value) || typeof value === 'object') {
+                                            // For objects and arrays, create a formatted JSON display
+                                            try {
+                                                const jsonStr = JSON.stringify(value, null, 2);
+                                                if (jsonStr.length > 2000) {
+                                                    // For large objects, show truncated version
+                                                    const truncated = jsonStr.substring(0, 2000) + '\n  ...\n}';
+                                                    markdown += `\`\`\`json\n${truncated}\n\`\`\``;
+                                                } else {
+                                                    markdown += `\`\`\`json\n${jsonStr}\n\`\`\``;
+                                                }
+                                            } catch (jsonError) {
+                                                markdown += `\`[Object/Array - could not stringify]\``;
+                                            }
+                                        } else {
+                                            markdown += `\`${String(value)}\``;
+                                        }
+                                        
+                                        return markdown;
+                                    }
+
+                                    function createCompactMarkdownDisplay(value, variableName, type) {
+                                        // Create better header
+                                        const headerText = type === 'flow' ? `Flow variable: ${variableName}` : `Env variable: ${variableName}`;
+                                        let markdown = `**${headerText}**\n\n`;
+                                        
+                                        // Handle different value types with more compact display
+                                        if (value === null) {
+                                            markdown += `_null_`;
+                                        } else if (value === undefined) {
+                                            markdown += `_undefined_`;
+                                        } else if (typeof value === 'string') {
+                                            const displayValue = value.length > 100 ? value.substring(0, 100) + '...' : value;
+                                            markdown += `\`"${displayValue}"\``;
+                                        } else if (typeof value === 'number') {
+                                            markdown += `\`${value}\``;
+                                        } else if (typeof value === 'boolean') {
+                                            markdown += `\`${value}\``;
+                                        } else if (Array.isArray(value)) {
+                                            // Show better array summary with expandable JSON
+                                            markdown += `🔢 **Array[${value.length}]** - _Click to expand in console_\n\n`;
+                                            if (value.length > 0) {
+                                                // Show first few items
+                                                const showItems = Math.min(value.length, 5);
+                                                for (let i = 0; i < showItems; i++) {
+                                                    const item = value[i];
+                                                    if (typeof item === 'string') {
+                                                        const shortItem = item.length > 40 ? item.substring(0, 40) + '...' : item;
+                                                        markdown += `**${i}:** \`"${shortItem}"\`\n`;
+                                                    } else if (typeof item === 'object' && item !== null) {
+                                                        const keys = Object.keys(item).slice(0, 3);
+                                                        const keyPreview = keys.join(', ') + (Object.keys(item).length > 3 ? ', ...' : '');
+                                                        markdown += `**${i}:** \`{${keyPreview}}\`\n`;
+                                                    } else {
+                                                        markdown += `**${i}:** \`${item}\`\n`;
+                                                    }
+                                                }
+                                                if (value.length > 5) {
+                                                    markdown += `_... ${value.length - 5} more items_\n`;
+                                                }
+                                            }
+                                            
+                                            // Add expandable JSON section
+                                            markdown += `\n<details><summary><strong>📋 View Full JSON</strong></summary>\n\n\`\`\`json\n${JSON.stringify(value, null, 2).substring(0, 2000)}\`\`\`\n\n</details>`;
+                                            
+                                        } else if (typeof value === 'object') {
+                                            // Show better object summary with expandable JSON  
+                                            const keys = Object.keys(value);
+                                            markdown += `📦 **Object{${keys.length}}** - _Click to expand in console_\n\n`;
+                                            if (keys.length > 0) {
+                                                // Show first few properties with better formatting
+                                                const showKeys = Math.min(keys.length, 6);
+                                                for (let i = 0; i < showKeys; i++) {
+                                                    const key = keys[i];
+                                                    const val = value[key];
+                                                    if (typeof val === 'string') {
+                                                        const shortVal = val.length > 30 ? val.substring(0, 30) + '...' : val;
+                                                        markdown += `**${key}:** \`"${shortVal}"\`\n`;
+                                                    } else if (Array.isArray(val)) {
+                                                        markdown += `**${key}:** 🔢 \`Array[${val.length}]\`\n`;
+                                                    } else if (typeof val === 'object' && val !== null) {
+                                                        const subKeys = Object.keys(val);
+                                                        markdown += `**${key}:** 📦 \`Object{${subKeys.length}}\`\n`;
+                                                    } else {
+                                                        markdown += `**${key}:** \`${val}\`\n`;
+                                                    }
+                                                }
+                                                if (keys.length > 6) {
+                                                    markdown += `_... ${keys.length - 6} more properties_\n`;
+                                                }
+                                            }
+                                            
+                                            // Add expandable JSON section
+                                            markdown += `\n<details><summary><strong>📋 View Full JSON</strong></summary>\n\n\`\`\`json\n${JSON.stringify(value, null, 2).substring(0, 2000)}\`\`\`\n\n</details>`;
+                                        } else {
+                                            markdown += `\`${String(value)}\``;
+                                        }
+                                        
+                                        return markdown;
+                                    }
+                                    
+                                    function createArrayDisplay(arr, depth, maxElements = 1000) {
+                                        if (depth > 3) return `<span style="color: #6a737d;">[Array]</span>`;
+                                        
+                                        let html = `<div style="margin-left: ${depth * 12}px;">`;
+                                        html += `<span style="color: #6a737d;">[</span>`;
+                                        
+                                        const displayLength = Math.min(arr.length, maxElements);
+                                        
+                                        for (let i = 0; i < displayLength; i++) {
+                                            html += `<div style="margin-left: 12px;">`;
+                                            html += `<span style="color: #6f42c1;">${i}:</span> `;
+                                            html += formatValue(arr[i], depth + 1);
+                                            if (i < displayLength - 1) html += '<span style="color: #6a737d;">,</span>';
+                                            html += `</div>`;
+                                        }
+                                        
+                                        if (arr.length > maxElements) {
+                                            html += `<div style="margin-left: 12px; color: #6a737d; font-style: italic;">... ${arr.length - maxElements} more items</div>`;
+                                        }
+                                        
+                                        html += `<span style="color: #6a737d;">]</span>`;
+                                        html += `</div>`;
+                                        
+                                        return html;
+                                    }
+                                    
+                                    function createObjectDisplay(obj, depth, maxKeys = 1000) {
+                                        if (depth > 3) return `<span style="color: #6a737d;">[Object]</span>`;
+                                        
+                                        let html = `<div style="margin-left: ${depth * 12}px;">`;
+                                        html += `<span style="color: #6a737d;">{</span>`;
+                                        
+                                        const keys = Object.keys(obj);
+                                        const displayLength = Math.min(keys.length, maxKeys);
+                                        
+                                        for (let i = 0; i < displayLength; i++) {
+                                            const key = keys[i];
+                                            html += `<div style="margin-left: 12px;">`;
+                                            html += `<span style="color: #032f62;">"${escapeHtml(key)}":</span> `;
+                                            html += formatValue(obj[key], depth + 1);
+                                            if (i < displayLength - 1) html += '<span style="color: #6a737d;">,</span>';
+                                            html += `</div>`;
+                                        }
+                                        
+                                        if (keys.length > maxKeys) {
+                                            html += `<div style="margin-left: 12px; color: #6a737d; font-style: italic;">... ${keys.length - maxKeys} more keys</div>`;
+                                        }
+                                        
+                                        html += `<span style="color: #6a737d;">}</span>`;
+                                        html += `</div>`;
+                                        
+                                        return html;
+                                    }
+                                    
+                                    function formatValue(value, depth) {
+                                        if (value === null) return `<span style="color: #6a737d;">null</span>`;
+                                        if (value === undefined) return `<span style="color: #6a737d;">undefined</span>`;
+                                        if (typeof value === 'string') {
+                                            const displayValue = value.length > 50 ? value.substring(0, 50) + '...' : value;
+                                            return `<span style="color: #032f62;">"${escapeHtml(displayValue)}"</span>`;
+                                        }
+                                        if (typeof value === 'number') return `<span style="color: #005cc5;">${value}</span>`;
+                                        if (typeof value === 'boolean') return `<span style="color: #e36209;">${value}</span>`;
+                                        if (Array.isArray(value)) {
+                                            if (depth > 2) return `<span style="color: #6a737d;">[Array(${value.length})]</span>`;
+                                            return createArrayDisplay(value, depth, 100);
+                                        }
+                                        if (typeof value === 'object') {
+                                            if (depth > 2) return `<span style="color: #6a737d;">[Object]</span>`;
+                                            return createObjectDisplay(value, depth, 100);
+                                        }
+                                        return `<span style="color: #6a737d;">${escapeHtml(String(value))}</span>`;
+                                    }
+                                    
+                                    function escapeHtml(text) {
+                                        return text
+                                            .replace(/&/g, '&amp;')
+                                            .replace(/</g, '&lt;')
+                                            .replace(/>/g, '&gt;')
+                                            .replace(/"/g, '&quot;')
+                                            .replace(/'/g, '&#39;');
+                                    }
+
+                                    // Interactive tooltip functions
+                                    function showInteractiveTooltip(mouseEvent, matchInfo, editorInstance) {
+                                        // Remove any existing tooltip
+                                        hideInteractiveTooltip();
+                                        
+                                        // Get the variable value
+                                        const getValue = matchInfo.type === 'flow' ? 
+                                            getFlowVariableValue(matchInfo.variableName, RED.workspaces.active()) :
+                                            getEnvVariableValue(matchInfo.variableName);
+                                        
+                                        getValue.then(value => {
+                                            createInteractiveTooltip(mouseEvent, matchInfo, value);
+                                        }).catch(() => {
+                                            createInteractiveTooltip(mouseEvent, matchInfo, undefined, true);
+                                        });
+                                    }
+                                    
+                                    function hideInteractiveTooltip() {
+                                        const existingTooltip = document.getElementById('nr-interactive-tooltip');
+                                        if (existingTooltip) {
+                                            existingTooltip.remove();
+                                        }
+                                    }
+                                    
+                                    function createInteractiveTooltip(mouseEvent, matchInfo, value, notFound = false) {
+                                        const tooltip = document.createElement('div');
+                                        tooltip.id = 'nr-interactive-tooltip';
+                                        tooltip.className = 'red-ui-debug-msg-payload';
+                                        tooltip.style.cssText = `
+                                            position: fixed;
+                                            z-index: 10000;
+                                            background: white;
+                                            border: 1px solid #ddd;
+                                            border-radius: 3px;
+                                            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                                            max-width: 600px;
+                                            max-height: 500px;
+                                            overflow: auto;
+                                            padding: 8px;
+                                            font-size: 12px;
+                                        `;
+                                        
+                                        // Position tooltip near mouse
+                                        tooltip.style.left = (mouseEvent.clientX + 10) + 'px';
+                                        tooltip.style.top = (mouseEvent.clientY + 10) + 'px';
+                                        
+                                        if (notFound) {
+                                            tooltip.innerHTML = `
+                                                <div class="red-ui-debug-msg-name" style="margin-bottom: 4px;">
+                                                    ${matchInfo.type}.get('${matchInfo.variableName}')
+                                                </div>
+                                                <div style="color: #999; font-style: italic;">Variable not found</div>
+                                            `;
+                                        } else {
+                                            // Create header with Node-RED styling
+                                            const header = document.createElement('div');
+                                            header.className = 'red-ui-debug-msg-name';
+                                            header.textContent = `${matchInfo.type}.get('${matchInfo.variableName}')`;
+                                            tooltip.appendChild(header);
+                                            
+                                            // Create Node-RED style debug message content
+                                            const msgContent = document.createElement('div');
+                                            msgContent.className = 'red-ui-debug-msg-payload';
+                                            
+                                            // Create the debug object viewer using Node-RED's structure
+                                            const viewer = createNodeRedDebugViewer(value, 0);
+                                            msgContent.appendChild(viewer);
+                                            tooltip.appendChild(msgContent);
+                                        }
+                                        
+                                        document.body.appendChild(tooltip);
+                                        
+                                        // Auto-hide on click outside
+                                        setTimeout(() => {
+                                            const clickHandler = (e) => {
+                                                if (!tooltip.contains(e.target)) {
+                                                    hideInteractiveTooltip();
+                                                    document.removeEventListener('click', clickHandler);
+                                                }
+                                            };
+                                            document.addEventListener('click', clickHandler);
+                                        }, 100);
+                                    }
+                                    
+                                    function createNodeRedDebugViewer(value, depth = 0) {
+                                        const container = document.createElement('div');
+                                        
+                                        if (value === null) {
+                                            const nullRow = document.createElement('div');
+                                            nullRow.className = 'red-ui-debug-msg-row';
+                                            nullRow.innerHTML = '<span class="red-ui-debug-msg-object-value">null</span>';
+                                            container.appendChild(nullRow);
+                                        } else if (value === undefined) {
+                                            const undefinedRow = document.createElement('div');
+                                            undefinedRow.className = 'red-ui-debug-msg-row';
+                                            undefinedRow.innerHTML = '<span class="red-ui-debug-msg-object-value">undefined</span>';
+                                            container.appendChild(undefinedRow);
+                                        } else if (typeof value === 'string') {
+                                            const stringRow = document.createElement('div');
+                                            stringRow.className = 'red-ui-debug-msg-row';
+                                            stringRow.innerHTML = `<span class="red-ui-debug-msg-object-value red-ui-debug-msg-type-string">"${escapeHtml(value)}"</span>`;
+                                            container.appendChild(stringRow);
+                                        } else if (typeof value === 'number') {
+                                            const numberRow = document.createElement('div');
+                                            numberRow.className = 'red-ui-debug-msg-row';
+                                            numberRow.innerHTML = `<span class="red-ui-debug-msg-object-value red-ui-debug-msg-type-number">${value}</span>`;
+                                            container.appendChild(numberRow);
+                                        } else if (typeof value === 'boolean') {
+                                            const boolRow = document.createElement('div');
+                                            boolRow.className = 'red-ui-debug-msg-row';
+                                            boolRow.innerHTML = `<span class="red-ui-debug-msg-object-value red-ui-debug-msg-type-boolean">${value}</span>`;
+                                            container.appendChild(boolRow);
+                                        } else if (Array.isArray(value)) {
+                                            container.appendChild(createNodeRedArrayViewer(value, depth));
+                                        } else if (typeof value === 'object') {
+                                            container.appendChild(createNodeRedObjectViewer(value, depth));
+                                        } else {
+                                            const otherRow = document.createElement('div');
+                                            otherRow.className = 'red-ui-debug-msg-row';
+                                            otherRow.innerHTML = `<span class="red-ui-debug-msg-object-value">${escapeHtml(String(value))}</span>`;
+                                            container.appendChild(otherRow);
+                                        }
+                                        
+                                        return container;
+                                    }
+
+                                    function createNodeRedArrayViewer(arr, depth) {
+                                        const container = document.createElement('div');
+                                        container.className = 'red-ui-debug-msg-row red-ui-debug-msg-expandable';
+                                        
+                                        // Create the expandable header row
+                                        const headerRow = document.createElement('div');
+                                        headerRow.className = 'red-ui-debug-msg-object-entry collapsed';
+                                        
+                                        // Add the expansion handle
+                                        const handle = document.createElement('i');
+                                        handle.className = 'fa fa-caret-right red-ui-debug-msg-object-handle';
+                                        headerRow.appendChild(handle);
+                                        
+                                        // Add the array type indicator
+                                        const typeSpan = document.createElement('span');
+                                        typeSpan.className = 'red-ui-debug-msg-object-type';
+                                        typeSpan.textContent = 'array';
+                                        headerRow.appendChild(typeSpan);
+                                        
+                                        // Add the length indicator
+                                        const lengthSpan = document.createElement('span');
+                                        lengthSpan.className = 'red-ui-debug-msg-object-type';
+                                        lengthSpan.textContent = `[${arr.length}]`;
+                                        headerRow.appendChild(lengthSpan);
+                                        
+                                        container.appendChild(headerRow);
+                                        
+                                        // Create the content container (initially hidden)
+                                        const contentContainer = document.createElement('div');
+                                        contentContainer.className = 'red-ui-debug-msg-object-contents';
+                                        contentContainer.style.display = 'none';
+                                        
+                                        // Add array items in groups of 10 (like Node-RED does)
+                                        const maxDisplay = Math.min(arr.length, 1000);
+                                        const groupSize = 10;
+                                        
+                                        for (let i = 0; i < maxDisplay; i += groupSize) {
+                                            const endIndex = Math.min(i + groupSize, maxDisplay);
+                                            const isLastGroup = endIndex === maxDisplay;
+                                            
+                                            if (groupSize < arr.length && !isLastGroup) {
+                                                // Create group header for multiple items
+                                                const groupHeader = document.createElement('div');
+                                                groupHeader.className = 'red-ui-debug-msg-row red-ui-debug-msg-expandable';
+                                                
+                                                const groupEntry = document.createElement('div');
+                                                groupEntry.className = 'red-ui-debug-msg-object-entry collapsed';
+                                                
+                                                const groupHandle = document.createElement('i');
+                                                groupHandle.className = 'fa fa-caret-right red-ui-debug-msg-object-handle';
+                                                groupEntry.appendChild(groupHandle);
+                                                
+                                                const groupRange = document.createElement('span');
+                                                groupRange.className = 'red-ui-debug-msg-object-key';
+                                                groupRange.textContent = `[${i}...${endIndex - 1}]`;
+                                                groupEntry.appendChild(groupRange);
+                                                
+                                                groupHeader.appendChild(groupEntry);
+                                                
+                                                const groupContent = document.createElement('div');
+                                                groupContent.className = 'red-ui-debug-msg-object-contents';
+                                                groupContent.style.display = 'none';
+                                                
+                                                // Add items in this group
+                                                for (let j = i; j < endIndex; j++) {
+                                                    const itemRow = document.createElement('div');
+                                                    itemRow.className = 'red-ui-debug-msg-row';
+                                                    
+                                                    const itemKey = document.createElement('span');
+                                                    itemKey.className = 'red-ui-debug-msg-object-key';
+                                                    itemKey.textContent = `${j}: `;
+                                                    itemRow.appendChild(itemKey);
+                                                    
+                                                    const itemViewer = createNodeRedDebugViewer(arr[j], depth + 1);
+                                                    itemRow.appendChild(itemViewer);
+                                                    groupContent.appendChild(itemRow);
+                                                }
+                                                
+                                                groupHeader.appendChild(groupContent);
+                                                contentContainer.appendChild(groupHeader);
+                                                
+                                                // Add click handler for group
+                                                groupEntry.onclick = () => toggleNodeRedDebugExpansion(groupHandle, groupContent, groupEntry);
+                                            } else {
+                                                // Add individual items
+                                                for (let j = i; j < endIndex; j++) {
+                                                    const itemRow = document.createElement('div');
+                                                    itemRow.className = 'red-ui-debug-msg-row';
+                                                    
+                                                    const itemKey = document.createElement('span');
+                                                    itemKey.className = 'red-ui-debug-msg-object-key';
+                                                    itemKey.textContent = `${j}: `;
+                                                    itemRow.appendChild(itemKey);
+                                                    
+                                                    const itemViewer = createNodeRedDebugViewer(arr[j], depth + 1);
+                                                    itemRow.appendChild(itemViewer);
+                                                    contentContainer.appendChild(itemRow);
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (arr.length > 1000) {
+                                            const moreRow = document.createElement('div');
+                                            moreRow.className = 'red-ui-debug-msg-row';
+                                            moreRow.innerHTML = `<span style="color: #999; font-style: italic;">... ${arr.length - 1000} more items</span>`;
+                                            contentContainer.appendChild(moreRow);
+                                        }
+                                        
+                                        container.appendChild(contentContainer);
+                                        
+                                        // Add click handler for main expansion
+                                        headerRow.onclick = () => toggleNodeRedDebugExpansion(handle, contentContainer, headerRow);
+                                        
+                                        return container;
+                                    }
+
+                                    function createNodeRedObjectViewer(obj, depth) {
+                                        const container = document.createElement('div');
+                                        container.className = 'red-ui-debug-msg-row red-ui-debug-msg-expandable';
+                                        
+                                        const keys = Object.keys(obj);
+                                        
+                                        // Create the expandable header row
+                                        const headerRow = document.createElement('div');
+                                        headerRow.className = 'red-ui-debug-msg-object-entry collapsed';
+                                        
+                                        // Add the expansion handle
+                                        const handle = document.createElement('i');
+                                        handle.className = 'fa fa-caret-right red-ui-debug-msg-object-handle';
+                                        headerRow.appendChild(handle);
+                                        
+                                        // Add the object type indicator
+                                        const typeSpan = document.createElement('span');
+                                        typeSpan.className = 'red-ui-debug-msg-object-type';
+                                        typeSpan.textContent = 'object';
+                                        headerRow.appendChild(typeSpan);
+                                        
+                                        // Add the key count
+                                        const lengthSpan = document.createElement('span');
+                                        lengthSpan.className = 'red-ui-debug-msg-object-type';
+                                        lengthSpan.textContent = `{${keys.length}}`;
+                                        headerRow.appendChild(lengthSpan);
+                                        
+                                        container.appendChild(headerRow);
+                                        
+                                        // Create the content container (initially hidden)
+                                        const contentContainer = document.createElement('div');
+                                        contentContainer.className = 'red-ui-debug-msg-object-contents';
+                                        contentContainer.style.display = 'none';
+                                        
+                                        // Add object properties (limited to 1000)
+                                        const maxKeys = Math.min(keys.length, 1000);
+                                        for (let i = 0; i < maxKeys; i++) {
+                                            const key = keys[i];
+                                            const propRow = document.createElement('div');
+                                            propRow.className = 'red-ui-debug-msg-row';
+                                            
+                                            const propKey = document.createElement('span');
+                                            propKey.className = 'red-ui-debug-msg-object-key';
+                                            propKey.textContent = `${key}: `;
+                                            propRow.appendChild(propKey);
+                                            
+                                            const propViewer = createNodeRedDebugViewer(obj[key], depth + 1);
+                                            propRow.appendChild(propViewer);
+                                            contentContainer.appendChild(propRow);
+                                        }
+                                        
+                                        if (keys.length > 1000) {
+                                            const moreRow = document.createElement('div');
+                                            moreRow.className = 'red-ui-debug-msg-row';
+                                            moreRow.innerHTML = `<span style="color: #999; font-style: italic;">... ${keys.length - 1000} more properties</span>`;
+                                            contentContainer.appendChild(moreRow);
+                                        }
+                                        
+                                        container.appendChild(contentContainer);
+                                        
+                                        // Add click handler for expansion
+                                        headerRow.onclick = () => toggleNodeRedDebugExpansion(handle, contentContainer, headerRow);
+                                        
+                                        return container;
+                                    }
+
+                                    function toggleNodeRedDebugExpansion(handle, content, entry) {
+                                        const isExpanded = !content.style.display || content.style.display === 'block';
+                                        
+                                        if (isExpanded) {
+                                            content.style.display = 'none';
+                                            handle.className = 'fa fa-caret-right red-ui-debug-msg-object-handle';
+                                            entry.classList.add('collapsed');
+                                        } else {
+                                            content.style.display = 'block';
+                                            handle.className = 'fa fa-caret-down red-ui-debug-msg-object-handle';
+                                            entry.classList.remove('collapsed');
+                                        }
+                                    }
+
+                                    function createObjectViewer(value, depth = 0) {
+                                        const container = document.createElement('div');
+                                        container.style.marginLeft = (depth * 12) + 'px';
+                                        
+                                        if (value === null) {
+                                            container.innerHTML = '<span style="color: #999; font-style: italic;">null</span>';
+                                        } else if (value === undefined) {
+                                            container.innerHTML = '<span style="color: #999; font-style: italic;">undefined</span>';
+                                        } else if (typeof value === 'string') {
+                                            container.innerHTML = `<span style="color: #d14;">"${escapeHtml(value)}"</span>`;
+                                        } else if (typeof value === 'number') {
+                                            container.innerHTML = `<span style="color: #099;">${value}</span>`;
+                                        } else if (typeof value === 'boolean') {
+                                            container.innerHTML = `<span style="color: #0086b3;">${value}</span>`;
+                                        } else if (Array.isArray(value)) {
+                                            container.appendChild(createArrayViewer(value, depth));
+                                        } else if (typeof value === 'object') {
+                                            container.appendChild(createObjectPropertyViewer(value, depth));
+                                        } else {
+                                            container.innerHTML = `<span style="color: #333;">${escapeHtml(String(value))}</span>`;
+                                        }
+                                        
+                                        return container;
+                                    }
+                                    
+                                    function createArrayViewer(arr, depth) {
+                                        const container = document.createElement('div');
+                                        
+                                        // Create collapsible header
+                                        const header = document.createElement('div');
+                                        header.style.cssText = 'cursor: pointer; user-select: none;';
+                                        header.innerHTML = `
+                                            <span class="toggle" style="margin-right: 4px;">▼</span>
+                                            <span style="color: #666;">Array(${arr.length})</span>
+                                        `;
+                                        
+                                        // Create content container
+                                        const content = document.createElement('div');
+                                        content.style.cssText = 'margin-left: 12px; margin-top: 2px;';
+                                        
+                                        // Add array items (limited to first 100 for performance)
+                                        const maxItems = Math.min(arr.length, 1000);
+                                        for (let i = 0; i < maxItems; i++) {
+                                            const item = document.createElement('div');
+                                            item.style.marginBottom = '1px';
+                                            
+                                            const indexSpan = document.createElement('span');
+                                            indexSpan.style.cssText = 'color: #666; margin-right: 6px;';
+                                            indexSpan.textContent = `${i}:`;
+                                            item.appendChild(indexSpan);
+                                            
+                                            const valueViewer = createObjectViewer(arr[i], depth + 1);
+                                            valueViewer.style.display = 'inline-block';
+                                            item.appendChild(valueViewer);
+                                            
+                                            content.appendChild(item);
+                                        }
+                                        
+                                        if (arr.length > maxItems) {
+                                            const moreDiv = document.createElement('div');
+                                            moreDiv.style.cssText = 'color: #999; font-style: italic; margin-top: 4px;';
+                                            moreDiv.textContent = `... ${arr.length - maxItems} more items`;
+                                            content.appendChild(moreDiv);
+                                        }
+                                        
+                                        // Toggle functionality
+                                        header.onclick = () => {
+                                            const toggle = header.querySelector('.toggle');
+                                            const isOpen = content.style.display !== 'none';
+                                            
+                                            if (isOpen) {
+                                                content.style.display = 'none';
+                                                toggle.textContent = '▶';
+                                            } else {
+                                                content.style.display = 'block';
+                                                toggle.textContent = '▼';
+                                            }
+                                        };
+                                        
+                                        container.appendChild(header);
+                                        container.appendChild(content);
+                                        
+                                        return container;
+                                    }
+                                    
+                                    function createObjectPropertyViewer(obj, depth) {
+                                        const container = document.createElement('div');
+                                        const keys = Object.keys(obj);
+                                        
+                                        // Create collapsible header
+                                        const header = document.createElement('div');
+                                        header.style.cssText = 'cursor: pointer; user-select: none;';
+                                        header.innerHTML = `
+                                            <span class="toggle" style="margin-right: 4px;">▼</span>
+                                            <span style="color: #666;">Object{${keys.length}}</span>
+                                        `;
+                                        
+                                        // Create content container
+                                        const content = document.createElement('div');
+                                        content.style.cssText = 'margin-left: 12px; margin-top: 2px;';
+                                        
+                                        // Add object properties (limited to first 100 for performance)
+                                        const maxKeys = Math.min(keys.length, 1000);
+                                        for (let i = 0; i < maxKeys; i++) {
+                                            const key = keys[i];
+                                            const item = document.createElement('div');
+                                            item.style.marginBottom = '1px';
+                                            
+                                            const keySpan = document.createElement('span');
+                                            keySpan.style.cssText = 'color: #0086b3; margin-right: 6px;';
+                                            keySpan.textContent = `${key}:`;
+                                            item.appendChild(keySpan);
+                                            
+                                            const valueViewer = createObjectViewer(obj[key], depth + 1);
+                                            valueViewer.style.display = 'inline-block';
+                                            item.appendChild(valueViewer);
+                                            
+                                            content.appendChild(item);
+                                        }
+                                        
+                                        if (keys.length > maxKeys) {
+                                            const moreDiv = document.createElement('div');
+                                            moreDiv.style.cssText = 'color: #999; font-style: italic; margin-top: 4px;';
+                                            moreDiv.textContent = `... ${keys.length - maxKeys} more properties`;
+                                            content.appendChild(moreDiv);
+                                        }
+                                        
+                                        // Toggle functionality
+                                        header.onclick = () => {
+                                            const toggle = header.querySelector('.toggle');
+                                            const isOpen = content.style.display !== 'none';
+                                            
+                                            if (isOpen) {
+                                                content.style.display = 'none';
+                                                toggle.textContent = '▶';
+                                            } else {
+                                                content.style.display = 'block';
+                                                toggle.textContent = '▼';
+                                            }
+                                        };
+                                        
+                                        container.appendChild(header);
+                                        container.appendChild(content);
+                                        
+                                        return container;
+                                    }
+
+                                    // Only register the hover provider once globally
+                                    if (!window.nrAnalyzerHoverProviderRegistered) {
+                                        // Add hover provider for flow.get() and env.get()
+                                        const hoverProvider = {
+                                            provideHover: function(model, position) {
+                                                const line = model.getLineContent(position.lineNumber);
+                                                const column = position.column;
+                                                
+                                                // Check for flow.get() calls
+                                                const flowGetRegex = /flow\.get\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+                                                let match;
+                                                while ((match = flowGetRegex.exec(line)) !== null) {
+                                                    const startCol = match.index + 1;
+                                                    const endCol = match.index + match[0].length + 1;
+                                                    
+                                                    if (column >= startCol && column <= endCol) {
+                                                        const variableName = match[1];
+                                                        
+                                                        return new Promise((resolve) => {
+                                                            // Get the current active flow dynamically
+                                                            const currentFlowId = RED.workspaces.active();
+                                                            
+                                                            getFlowVariableValue(variableName, currentFlowId).then(value => {
+                                                                const valueDisplay = createCompactMarkdownDisplay(value, variableName, 'flow');
+                                                                resolve({
+                                                                    range: new monaco.Range(position.lineNumber, startCol, position.lineNumber, endCol),
+                                                                    contents: [{
+                                                                        value: valueDisplay
+                                                                    }]
+                                                                });
+                                                            }).catch(() => {
+                                                                resolve({
+                                                                    range: new monaco.Range(position.lineNumber, startCol, position.lineNumber, endCol),
+                                                                    contents: [{
+                                                                        value: `**flow.get('${variableName}')**\n\n_Variable not found in current flow_`
+                                                                    }]
+                                                                });
+                                                            });
+                                                        });
+                                                    }
+                                                }
+                                                
+                                                // Check for env.get() calls
+                                                const envGetRegex = /env\.get\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+                                                while ((match = envGetRegex.exec(line)) !== null) {
+                                                    const startCol = match.index + 1;
+                                                    const endCol = match.index + match[0].length + 1;
+                                                    
+                                                    if (column >= startCol && column <= endCol) {
+                                                        const variableName = match[1];
+                                                        
+                                                        return new Promise((resolve) => {
+                                                            // Get the current active flow dynamically
+                                                            const currentFlowId = RED.workspaces.active();
+                                                            
+                                                            getEnvVariableValue(variableName, currentFlowId).then(value => {
+                                                                const valueDisplay = createCompactMarkdownDisplay(value, variableName, 'env');
+                                                                resolve({
+                                                                    range: new monaco.Range(position.lineNumber, startCol, position.lineNumber, endCol),
+                                                                    contents: [{
+                                                                        value: valueDisplay
+                                                                    }]
+                                                                });
+                                                            }).catch(() => {
+                                                                resolve({
+                                                                    range: new monaco.Range(position.lineNumber, startCol, position.lineNumber, endCol),
+                                                                    contents: [{
+                                                                        value: `**env.get('${variableName}')**\n\n_Environment variable not found_`
+                                                                    }]
+                                                                });
+                                                            });
+                                                        });
+                                                    }
+                                                }
+                                                
+                                                return null;
+                                            }
+                                        };
+                                        
+                                        monaco.languages.registerHoverProvider('javascript', hoverProvider);
+                                        window.nrAnalyzerHoverProviderRegistered = true;
+                                    }
                                 });
                             }, 200);
                         }
