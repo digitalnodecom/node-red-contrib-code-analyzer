@@ -42,6 +42,37 @@
             position: relative;
             height: 300px;
         }
+        
+        /* Error highlighting styles for clickable errors */
+        .error-item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
+        
+        .error-glyph-margin {
+            background: #dc2626;
+        }
+        
+        .highlighted-line-error {
+            background: rgba(220, 38, 38, 0.2);
+            border: 1px solid #dc2626;
+        }
+        
+        /* Navigation modal and toast animations */
+        @keyframes slideInFromTop {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .navigation-toast {
+            animation: slideInFromTop 0.3s ease-out;
+        }
     </style>
 </head>
 <body class="bg-gray-50">

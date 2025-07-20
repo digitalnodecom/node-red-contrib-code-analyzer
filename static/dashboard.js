@@ -348,6 +348,34 @@ class QualityDashboard {
                     </div>
                 </div>
             `;
+            
+            // Add event listeners to error items after DOM is updated
+            setTimeout(() => {
+                const errorItems = container.querySelectorAll('.error-item');
+                
+                errorItems.forEach((errorElement, index) => {
+                    errorElement.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const nodeId = errorElement.dataset.nodeId;
+                        const flowId = errorElement.dataset.flowId;
+                        const line = parseInt(errorElement.dataset.line);
+                        const column = parseInt(errorElement.dataset.column);
+                        const nodeName = errorElement.dataset.nodeName;
+                        
+                        if (window.openNodeEditor) {
+                            window.openNodeEditor(nodeId, flowId, line, column, nodeName);
+                        } else {
+                            console.error('openNodeEditor function not found on window object');
+                        }
+                    });
+                    
+                    // Update title with helpful information
+                    errorElement.title = `Click to open ${errorElement.dataset.nodeName} at line ${errorElement.dataset.line} in Node-RED editor`;
+                });
+            }, 100);
+            
         } catch (error) {
             container.innerHTML = `
                 <div class="px-4 pb-4 border-t border-gray-200 bg-red-50">
@@ -403,7 +431,13 @@ class QualityDashboard {
                                     issue.severity === 'critical' ? 'border-red-500' :
                                     issue.severity === 'warning' ? 'border-orange-500' : 
                                     'border-blue-500'
-                                }">
+                                } hover:bg-gray-50 cursor-pointer transition-colors group error-item"
+                                     data-node-id="${node.nodeId}" 
+                                     data-flow-id="${node.navigation.flowId}" 
+                                     data-line="${issue.line}" 
+                                     data-column="${issue.column || 1}" 
+                                     data-node-name="${node.nodeName.replace(/"/g, '&quot;')}"
+                                     title="Click to open in Node-RED editor (Line ${issue.line})">
                                     <div class="flex-shrink-0 mt-0.5">
                                         <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold text-white" 
                                               style="background-color: ${issue.color}">
@@ -416,18 +450,22 @@ class QualityDashboard {
                                                   style="color: ${issue.color}">
                                                 ${issue.severity}
                                             </span>
-                                            <span class="ml-2 text-xs text-gray-500">
+                                            <span class="ml-2 text-xs text-gray-500 group-hover:text-blue-600">
+                                                <i class="fas fa-external-link-alt mr-1 opacity-0 group-hover:opacity-100 transition-opacity"></i>
                                                 Line ${issue.line}${issue.column ? `, Col ${issue.column}` : ''}
                                             </span>
                                             <span class="ml-2 text-xs text-gray-400">
                                                 -${issue.weight} pts
                                             </span>
                                         </div>
-                                        <div class="text-sm text-gray-800 mt-1">
+                                        <div class="text-sm text-gray-800 mt-1 group-hover:text-gray-900">
                                             ${issue.message}
                                         </div>
-                                        <div class="text-xs text-gray-500 mt-1">
+                                        <div class="text-xs text-gray-500 mt-1 group-hover:text-gray-600">
                                             Type: ${issue.type.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                            <span class="ml-2 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                → Click to open in editor
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -574,6 +612,226 @@ class QualityDashboard {
         }
     }
 
+    // Navigate to Node-RED editor for specific node and line
+    async openNodeEditor(nodeId, flowId, lineNumber = 1, columnNumber = 1, nodeName = 'Function Node') {
+        console.log('openNodeEditor called with:', { nodeId, flowId, lineNumber, columnNumber, nodeName }); // Debug log
+        try {
+            // Construct the Node-RED editor URL (try without /red/ prefix)
+            const editorUrl = `/#flow/${flowId}`;
+            
+            // First, navigate to the flow
+            const newWindow = window.open(editorUrl, '_blank');
+            
+            if (!newWindow) {
+                // Popup blocked, try alternative approach
+                this.showNavigationModal(nodeId, flowId, lineNumber, columnNumber, nodeName);
+                return;
+            }
+            
+            // Try different approaches to open the node
+            this.attemptNodeNavigation(newWindow, nodeId, flowId, lineNumber, columnNumber, nodeName);
+            
+            // Always show a helpful toast for user guidance
+            setTimeout(() => {
+                this.showNavigationToast(nodeName, lineNumber, nodeId);
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Failed to open Node-RED editor:', error);
+            this.showError('Failed to open Node-RED editor: ' + error.message);
+        }
+    }
+    
+    // Smart single-attempt navigation to prevent multiple editor instances
+    attemptNodeNavigation(nodeRedWindow, nodeId, flowId, lineNumber, columnNumber, nodeName) {
+        let navigationCompleted = false;
+        
+        // Single optimized attempt with smart Monaco editor handling
+        setTimeout(() => {
+            try {
+                if (nodeRedWindow.closed || navigationCompleted) {
+                    return;
+                }
+                
+                const script = `
+                    (function() {
+                        console.log('Smart navigation: Trying to navigate to node ${nodeId}');
+                        
+                        if (typeof RED !== 'undefined' && RED.nodes && RED.editor) {
+                            console.log('RED object found, looking for node...');
+                            const targetNode = RED.nodes.node('${nodeId}');
+                            
+                            if (targetNode) {
+                                console.log('Opening node editor for:', targetNode.name || 'Function Node');
+                                RED.editor.edit(targetNode);
+                                
+                                // Smart Monaco editor detection with retry logic
+                                const waitForActiveEditor = (attempts = 0) => {
+                                    if (attempts > 15) { // Max 7.5 seconds wait
+                                        console.log('Monaco editor timeout - navigation failed');
+                                        return;
+                                    }
+                                    
+                                    if (typeof monaco !== 'undefined' && monaco.editor) {
+                                        const editors = monaco.editor.getEditors();
+                                        console.log('Found', editors.length, 'Monaco editors');
+                                        
+                                        if (editors.length > 0) {
+                                            // Find the active/focused editor or the most recently created one
+                                            let activeEditor = editors.find(editor => {
+                                                return editor.hasWidgetFocus() || editor.hasTextFocus();
+                                            });
+                                            
+                                            // If no focused editor, use the last one (most recently created)
+                                            if (!activeEditor) {
+                                                activeEditor = editors[editors.length - 1];
+                                            }
+                                            
+                                            if (activeEditor && activeEditor.getModel()) {
+                                                console.log('Using active Monaco editor for navigation');
+                                                
+                                                // Ensure the editor is focused and ready
+                                                activeEditor.focus();
+                                                
+                                                // Navigate to the specific line
+                                                activeEditor.revealLineInCenter(${lineNumber});
+                                                activeEditor.setPosition({ 
+                                                    lineNumber: ${lineNumber}, 
+                                                    column: ${columnNumber} 
+                                                });
+                                                
+                                                // Add temporary line highlighting
+                                                const decoration = activeEditor.deltaDecorations([], [{
+                                                    range: new monaco.Range(${lineNumber}, 1, ${lineNumber}, 100),
+                                                    options: {
+                                                        className: 'highlighted-line-error',
+                                                        isWholeLine: true,
+                                                        glyphMarginClassName: 'error-glyph-margin'
+                                                    }
+                                                }]);
+                                                
+                                                // Remove highlighting after 8 seconds
+                                                setTimeout(() => {
+                                                    if (activeEditor && !activeEditor.isDisposed()) {
+                                                        activeEditor.deltaDecorations(decoration, []);
+                                                    }
+                                                }, 8000);
+                                                
+                                                console.log('Navigation completed successfully on line ${lineNumber}');
+                                                return; // Success - exit retry loop
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Retry with progressive delay
+                                    setTimeout(() => waitForActiveEditor(attempts + 1), 500);
+                                };
+                                
+                                // Start Monaco detection after editor setup delay
+                                setTimeout(() => waitForActiveEditor(), 800);
+                            } else {
+                                console.log('Node ${nodeId} not found in RED.nodes');
+                            }
+                        } else {
+                            console.log('RED object not available');
+                        }
+                    })();
+                `;
+                
+                nodeRedWindow.eval(script);
+                navigationCompleted = true;
+                console.log('Single smart navigation attempt initiated');
+                
+            } catch (error) {
+                console.warn('Navigation attempt failed:', error);
+            }
+        }, 1500); // Single optimized delay
+        
+        // Backup URL navigation
+        setTimeout(() => {
+            try {
+                const enhancedUrl = `/#flow/${flowId}?node=${nodeId}&line=${lineNumber}`;
+                nodeRedWindow.location.href = enhancedUrl;
+                console.log('Backup URL navigation:', enhancedUrl);
+            } catch (error) {
+                console.warn('URL navigation failed:', error);
+            }
+        }, 2000);
+    }
+    
+    showNavigationModal(nodeId, flowId, lineNumber, columnNumber, nodeName) {
+        // Create a modal with instructions if automatic navigation fails
+        const modalHTML = `
+            <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                <div class="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-external-link-alt text-blue-600 text-xl mr-3"></i>
+                        <h3 class="text-lg font-semibold text-gray-900">Navigate to Error</h3>
+                    </div>
+                    <div class="mb-4 text-sm text-gray-600">
+                        <p class="mb-2">To view this error in the Node-RED editor:</p>
+                        <ol class="list-decimal list-inside space-y-1 text-xs bg-gray-50 p-3 rounded">
+                            <li>Open Node-RED: <a href="/#flow/${flowId}" target="_blank" class="text-blue-600 hover:underline">/#flow/${flowId}</a></li>
+                            <li>Find and double-click: <strong>${nodeName}</strong></li>
+                            <li>Navigate to: <strong>Line ${lineNumber}</strong>${columnNumber > 1 ? `, Column ${columnNumber}` : ''}</li>
+                        </ol>
+                    </div>
+                    <div class="flex justify-between">
+                        <button onclick="window.open('/#flow/${flowId}', '_blank')" 
+                                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
+                            <i class="fas fa-external-link-alt mr-2"></i>Open Flow
+                        </button>
+                        <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                                class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-sm">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+    
+    showNavigationToast(nodeName, lineNumber, nodeId) {
+        // Show a toast notification with navigation info
+        const toastHTML = `
+            <div class="fixed top-4 right-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 rounded-lg shadow-lg z-50 max-w-md navigation-toast">
+                <div class="flex items-start">
+                    <i class="fas fa-external-link-alt text-blue-200 text-lg mt-0.5 mr-3"></i>
+                    <div class="flex-1">
+                        <div class="text-sm font-semibold mb-2">Node-RED Editor Opened</div>
+                        <div class="text-xs text-blue-100 space-y-1">
+                            <div>• <strong>Node:</strong> ${nodeName}</div>
+                            <div>• <strong>Line:</strong> ${lineNumber}</div>
+                            <div>• <strong>Node ID:</strong> ${nodeId.substring(0, 8)}...</div>
+                        </div>
+                        <div class="text-xs text-blue-200 mt-2 pt-2 border-t border-blue-500">
+                            <strong>Next steps:</strong> Double-click the function node to open its editor
+                        </div>
+                    </div>
+                    <button onclick="this.parentElement.parentElement.remove()" 
+                            class="ml-2 text-blue-200 hover:text-white transition-colors">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // Add toast to page
+        document.body.insertAdjacentHTML('beforeend', toastHTML);
+        
+        // Remove toast after 10 seconds
+        setTimeout(() => {
+            const toast = document.querySelector('.navigation-toast');
+            if (toast) {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 10000);
+    }
+
     // Utility functions
     getQualityColor(score) {
         if (score >= 90) return '#10b981';
@@ -614,5 +872,10 @@ class QualityDashboard {
 
 // Initialize dashboard when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    new QualityDashboard();
+    const dashboard = new QualityDashboard();
+    
+    // Make navigation function available globally for onclick handlers
+    window.openNodeEditor = (nodeId, flowId, lineNumber, columnNumber, nodeName) => {
+        dashboard.openNodeEditor(nodeId, flowId, parseInt(lineNumber), parseInt(columnNumber), nodeName);
+    };
 });

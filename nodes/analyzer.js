@@ -834,7 +834,15 @@ module.exports = function(RED) {
                             totalIssues: issues.length,
                             complexityScore,
                             issueTypes: issues.map(i => i.type)
-                        })
+                        }),
+                        // Navigation information for editor opening
+                        navigation: {
+                            flowId: flowId,
+                            nodeId: nodeConfig.id,
+                            nodeName: nodeConfig.name || `Function Node ${nodeConfig.id.substring(0, 8)}`,
+                            editorUrl: `/red/#flow/${flowId}`,
+                            nodeType: nodeConfig.type
+                        }
                     });
                 }
             });
@@ -918,6 +926,47 @@ module.exports = function(RED) {
         } catch (error) {
             res.status(500).json({ 
                 error: 'Failed to get flow details', 
+                details: error.message 
+            });
+        }
+    });
+
+    // API: Navigate to specific node and line (for editor integration)
+    RED.httpAdmin.post('/code-analyzer/api/navigate-to-node', function(req, res) {
+        try {
+            const { nodeId, flowId, lineNumber, columnNumber } = req.body;
+            
+            // Verify node exists
+            let nodeExists = false;
+            RED.nodes.eachNode(function(n) {
+                if (n.id === nodeId && n.z === flowId) {
+                    nodeExists = true;
+                }
+            });
+            
+            if (!nodeExists) {
+                return res.status(404).json({ 
+                    error: 'Node not found',
+                    nodeId,
+                    flowId
+                });
+            }
+            
+            // Return navigation information
+            res.json({
+                success: true,
+                navigation: {
+                    nodeId,
+                    flowId,
+                    lineNumber: lineNumber || 1,
+                    columnNumber: columnNumber || 1,
+                    editorUrl: `/red/#flow/${flowId}`,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                error: 'Failed to prepare navigation', 
                 details: error.message 
             });
         }
