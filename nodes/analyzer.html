@@ -1008,9 +1008,7 @@
                 }
             });
             
-            console.log(`Searching for flow.set('${variableName}') in flow "${flowName}" (${currentFlowId})`);
-            
-            // First, trigger a fresh scan by sending a message to any code-analyzer node in this flow
+            // Check if there's an analyzer node in current flow, then proceed
             const analyzerNodes = [];
             RED.nodes.eachNode(function(node) {
                 if (node.type === 'code-analyzer' && node.z === currentFlowId) {
@@ -1018,24 +1016,14 @@
                 }
             });
             
-            if (analyzerNodes.length > 0) {
-                console.log('Found analyzer node in current flow, proceeding...');
-                // Just proceed - the analyzer should have scanned recently
-                fetchAndNavigate();
-            } else {
-                console.log('No analyzer node found in current flow, proceeding anyway...');
-                // No analyzer node found, proceed anyway
-                fetchAndNavigate();
-            }
+            fetchAndNavigate();
             
             function fetchAndNavigate() {
                 // Fetch flow variable mapping from API
                 fetch(`/code-analyzer/flow-variables/${currentFlowId}`)
                     .then(response => response.json())
                     .then(flowVariableMap => {
-                        console.log(`Received flow variable map for "${flowName}":`, flowVariableMap);
                         const variable = flowVariableMap[variableName];
-                        console.log(`Variable '${variableName}' data:`, variable);
                         
                         if (!variable || !variable.sets || variable.sets.length === 0) {
                             RED.notify(`No flow.set('${variableName}') found in flow "${flowName}"`, 'warning');
@@ -1045,7 +1033,6 @@
                         navigateToVariable(variable, variableName);
                     })
                     .catch(error => {
-                        console.error('Error fetching flow variables:', error);
                         RED.notify('Error fetching flow variable information', 'error');
                     });
             }

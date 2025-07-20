@@ -101,10 +101,8 @@ module.exports = function(RED) {
                 }
             });
             
-            console.log(`Scanning flow "${flowName}" (${currentFlowId}) for flow variables...`);
             RED.nodes.eachNode(function (nodeConfig) {
                 if (nodeConfig.type === 'function' && nodeConfig.func && nodeConfig.z === currentFlowId) {
-                    console.log(`Processing function node ${nodeConfig.id} (${nodeConfig.name || 'unnamed'}) in flow ${nodeConfig.z}`);
                     try {
                         const { parseScript } = require('meriyah');
                         let ast;
@@ -136,11 +134,6 @@ module.exports = function(RED) {
                         
                         const flowVars = findFlowVariables(ast);
                         
-                        // Debug logging
-                        if (flowVars.length > 0) {
-                            console.log(`Found ${flowVars.length} flow variables in node ${nodeConfig.id}:`, flowVars);
-                        }
-                        
                         flowVars.forEach(flowVar => {
                             if (!flowVariableMap[flowVar.variableName]) {
                                 flowVariableMap[flowVar.variableName] = {
@@ -167,13 +160,12 @@ module.exports = function(RED) {
                         });
                     } catch (error) {
                         // If flow variable parsing fails, continue with regular analysis
-                        console.warn('Flow variable analysis failed for node', nodeConfig.id, error.message);
+                        // Silently continue
                     }
                 }
             });
             
             // Store flow variable map globally for editor access
-            console.log(`Storing flow variable map for flow "${flowName}" (${currentFlowId}):`, flowVariableMap);
             RED.flowVariableMaps[currentFlowId] = flowVariableMap;
             
             // Second pass: analyze debugging traits
@@ -423,31 +415,14 @@ module.exports = function(RED) {
     
     // API endpoint to get all flow variable mappings (must be before /:flowId route)
     RED.httpAdmin.get('/code-analyzer/flow-variables/all-flows', function(req, res) {
-        console.log('API request for all flows');
-        console.log('Available flow variable maps:', Object.keys(RED.flowVariableMaps || {}));
-        
         const allFlowMaps = RED.flowVariableMaps || {};
-        console.log(`Returning all flow maps:`, Object.keys(allFlowMaps));
         res.json(allFlowMaps);
     });
     
     // API endpoint to get flow variable mapping for a specific flow
     RED.httpAdmin.get('/code-analyzer/flow-variables/:flowId', function(req, res) {
         const flowId = req.params.flowId;
-        
-        // Get flow name for better debugging
-        let flowName = `Flow ${flowId.substring(0, 8)}`;
-        RED.nodes.eachNode(function(n) {
-            if (n.type === 'tab' && n.id === flowId) {
-                flowName = n.label || n.name || flowName;
-            }
-        });
-        
-        console.log(`API request for flow "${flowName}" (${flowId})`);
-        console.log('Available flow variable maps:', Object.keys(RED.flowVariableMaps || {}));
-        
         const flowVariableMap = (RED.flowVariableMaps && RED.flowVariableMaps[flowId]) || {};
-        console.log(`Returning for flow "${flowName}":`, flowVariableMap);
         res.json(flowVariableMap);
     });
 };
