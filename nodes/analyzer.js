@@ -236,6 +236,7 @@ module.exports = function(RED) {
                         flowName,
                         flowQualityMetrics.totalIssues,
                         flowQualityMetrics.nodesWithIssues,
+                        flowQualityMetrics.nodesWithCriticalIssues || 0,
                         flowQualityMetrics.totalFunctionNodes,
                         flowQualityMetrics.issueTypes,
                         flowQualityMetrics.qualityScore,
@@ -682,8 +683,18 @@ module.exports = function(RED) {
 
             const qualityMetrics = new QualityMetrics();
             
+            // Transform database results to match expected format
+            const transformedFlows = qualitySummary.flows.map(flow => ({
+                totalFunctionNodes: flow.total_function_nodes,
+                totalIssues: flow.total_issues,
+                nodesWithIssues: flow.nodes_with_issues,
+                nodesWithCriticalIssues: flow.nodes_with_critical_issues || 0,
+                qualityScore: flow.quality_score,
+                complexityScore: flow.complexity_score
+            }));
+
             // Calculate system-wide trends
-            const systemTrends = qualityMetrics.calculateSystemQualityTrends(qualitySummary.flows);
+            const systemTrends = qualityMetrics.calculateSystemQualityTrends(transformedFlows);
             
             // Store system trends
             await Promise.all([
@@ -979,7 +990,6 @@ module.exports = function(RED) {
                 return res.status(503).json({ error: 'Quality database not available' });
             }
 
-            const hours = parseInt(req.query.hours) || 24;
             const metricType = req.query.type || 'cpu';
             const count = parseInt(req.query.count) || 50;
 

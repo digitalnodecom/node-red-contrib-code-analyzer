@@ -2151,6 +2151,12 @@
                 </div>
                 <div class="form-tips">View comprehensive code quality metrics, trends, and performance analytics in a dedicated dashboard</div>
             </div>
+            
+            <div class="form-row-stacked">
+                <label for="node-input-dbRetentionDays"><i class="fa fa-database"></i> Database Retention (days)</label>
+                <input type="number" id="node-input-dbRetentionDays" placeholder="7" min="1" max="30">
+                <div class="form-tips">Keep quality metrics and performance data for this many days (1-30 days)</div>
+            </div>
         </div>
         
         <!-- Code Analysis Tab -->
@@ -2257,11 +2263,6 @@
                 </div>
             </div>
             
-            <div class="form-row-stacked form-row-performanceThreshold" style="display: none;">
-                <label for="node-input-dbRetentionDays"><i class="fa fa-database"></i> Database Retention (days)</label>
-                <input type="number" id="node-input-dbRetentionDays" placeholder="7" min="1" max="30">
-                <div class="form-tips">Keep performance data for this many days (1-30 days)</div>
-            </div>
             
             <div class="form-row-stacked form-row-performanceThreshold" style="display: none;">
                 <label><i class="fa fa-info-circle"></i> Database Location</label>
