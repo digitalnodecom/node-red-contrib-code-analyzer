@@ -434,69 +434,24 @@ module.exports = function(RED) {
             
             let value = undefined;
             let found = false;
-            let debugInfo = {
-                nodesInFlow: 0,
-                nodesWithRuntime: 0,
-                nodesWithContext: 0,
-                contextErrors: []
-            };
             
             // Find any runtime node in the target flow to access its flow context
             RED.nodes.eachNode(function(nodeConfig) {
-                if (nodeConfig.z === flowId) {
-                    debugInfo.nodesInFlow++;
-                    
-                    if (!found) {
-                        const runtimeNode = RED.nodes.getNode(nodeConfig.id);
-                        if (runtimeNode) {
-                            debugInfo.nodesWithRuntime++;
-                            
-                            if (runtimeNode.context) {
-                                debugInfo.nodesWithContext++;
-                                
-                                try {
-                                    const flowContext = runtimeNode.context().flow;
-                                    if (flowContext) {
-                                        // Try to get available keys for debugging
-                                        let availableKeys = [];
-                                        try {
-                                            if (typeof flowContext.keys === 'function') {
-                                                availableKeys = flowContext.keys();
-                                            }
-                                        } catch (keysError) {
-                                            // keys() might not be available
-                                        }
-                                        
-                                        debugInfo.availableKeys = availableKeys.slice(0, 10); // First 10 keys
-                                        debugInfo.totalKeys = availableKeys.length;
-                                        
-                                        // Use synchronous get - this is the correct approach
-                                        const contextValue = flowContext.get(variableName);
-                                        if (contextValue !== undefined) {
-                                            value = contextValue;
-                                            found = true;
-                                        } else {
-                                            // Try different storage backends if default didn't work
-                                            const storages = ['default', 'memory', 'file', 'localfilesystem'];
-                                            for (const storage of storages) {
-                                                try {
-                                                    const storageValue = flowContext.get(variableName, storage);
-                                                    if (storageValue !== undefined) {
-                                                        value = storageValue;
-                                                        found = true;
-                                                        debugInfo.foundInStorage = storage;
-                                                        break;
-                                                    }
-                                                } catch (storageError) {
-                                                    // Continue to next storage
-                                                }
-                                            }
-                                        }
-                                    }
-                                } catch (contextError) {
-                                    debugInfo.contextErrors.push(contextError.message);
+                if (nodeConfig.z === flowId && !found) {
+                    const runtimeNode = RED.nodes.getNode(nodeConfig.id);
+                    if (runtimeNode && runtimeNode.context) {
+                        try {
+                            const flowContext = runtimeNode.context().flow;
+                            if (flowContext) {
+                                // Use synchronous get - this is the correct approach
+                                const contextValue = flowContext.get(variableName);
+                                if (contextValue !== undefined) {
+                                    value = contextValue;
+                                    found = true;
                                 }
                             }
+                        } catch (contextError) {
+                            // Continue to next node
                         }
                     }
                 }
@@ -506,11 +461,7 @@ module.exports = function(RED) {
             res.json({
                 variableName: variableName,
                 value: value,
-                found: found,
-                debug: {
-                    flowId: flowId,
-                    ...debugInfo
-                }
+                found: found
             });
             
         } catch (error) {
@@ -583,13 +534,7 @@ module.exports = function(RED) {
             res.json({ 
                 variableName: variableName, 
                 value: value,
-                found: found,
-                debug: {
-                    flowId: flowId,
-                    hasFlowNode: !!flowNode,
-                    flowHasEnv: !!(flowNode && flowNode.env),
-                    envCount: flowNode && flowNode.env ? flowNode.env.length : 0
-                }
+                found: found
             });
         } catch (error) {
             res.status(500).json({ 
