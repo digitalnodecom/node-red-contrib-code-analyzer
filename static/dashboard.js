@@ -57,7 +57,6 @@ class QualityDashboard {
             this.showLoading(false);
             
         } catch (error) {
-            console.error('Failed to load dashboard data:', error);
             this.showError('Failed to load dashboard data. Please check your connection.');
             this.showLoading(false);
         }
@@ -221,8 +220,9 @@ class QualityDashboard {
             return;
         }
 
-        container.innerHTML = flows.slice(0, 10).map((flow, index) => {
+        container.innerHTML = flows.slice(0, 10).map((flow) => {
             const qualityColor = this.getQualityColor(flow.quality_score);
+            const progressBarColor = this.getProgressBarColor(flow.quality_score);
             const healthPercentage = Math.round((flow.total_function_nodes - flow.nodes_with_issues) / Math.max(1, flow.total_function_nodes) * 100);
             
             return `
@@ -242,8 +242,8 @@ class QualityDashboard {
                                 ${flow.total_issues} issues in ${flow.total_function_nodes} nodes (${healthPercentage}% healthy)
                             </div>
                             <div class="mt-2 w-full bg-gray-200 rounded-full h-2">
-                                <div class="bg-green-500 h-2 rounded-full" 
-                                     style="width: ${healthPercentage}%"></div>
+                                <div class="h-2 rounded-full transition-all duration-500" 
+                                     style="width: ${flow.quality_score}%; background-color: ${progressBarColor}"></div>
                             </div>
                         </div>
                         <div class="ml-4 text-right">
@@ -269,7 +269,7 @@ class QualityDashboard {
         
         // Add event listeners after DOM is updated
         container.querySelectorAll('.flow-toggle').forEach(element => {
-            element.addEventListener('click', (e) => {
+            element.addEventListener('click', () => {
                 const flowId = element.dataset.flowId;
                 this.toggleFlowDetails(flowId, element);
             });
@@ -353,7 +353,7 @@ class QualityDashboard {
             setTimeout(() => {
                 const errorItems = container.querySelectorAll('.error-item');
                 
-                errorItems.forEach((errorElement, index) => {
+                errorItems.forEach((errorElement) => {
                     errorElement.addEventListener('click', (e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -624,12 +624,12 @@ class QualityDashboard {
             
             if (!newWindow) {
                 // Popup blocked, try alternative approach
-                this.showNavigationModal(nodeId, flowId, lineNumber, columnNumber, nodeName);
+                this.showNavigationModal(flowId, lineNumber, columnNumber, nodeName);
                 return;
             }
             
             // Try different approaches to open the node
-            this.attemptNodeNavigation(newWindow, nodeId, flowId, lineNumber, columnNumber, nodeName);
+            this.attemptNodeNavigation(newWindow, nodeId, flowId, lineNumber, columnNumber);
             
             // Always show a helpful toast for user guidance
             setTimeout(() => {
@@ -643,7 +643,7 @@ class QualityDashboard {
     }
     
     // Smart single-attempt navigation to prevent multiple editor instances
-    attemptNodeNavigation(nodeRedWindow, nodeId, flowId, lineNumber, columnNumber, nodeName) {
+    attemptNodeNavigation(nodeRedWindow, nodeId, flowId, lineNumber, columnNumber) {
         let navigationCompleted = false;
         
         // Single optimized attempt with smart Monaco editor handling
@@ -655,52 +655,35 @@ class QualityDashboard {
                 
                 const script = `
                     (function() {
-                        console.log('Smart navigation: Trying to navigate to node ${nodeId}');
-                        
                         if (typeof RED !== 'undefined' && RED.nodes && RED.editor) {
-                            console.log('RED object found, looking for node...');
                             const targetNode = RED.nodes.node('${nodeId}');
                             
                             if (targetNode) {
-                                console.log('Opening node editor for:', targetNode.name || 'Function Node');
                                 RED.editor.edit(targetNode);
                                 
-                                // Smart Monaco editor detection with retry logic
                                 const waitForActiveEditor = (attempts = 0) => {
-                                    if (attempts > 15) { // Max 7.5 seconds wait
-                                        console.log('Monaco editor timeout - navigation failed');
-                                        return;
-                                    }
+                                    if (attempts > 15) return;
                                     
                                     if (typeof monaco !== 'undefined' && monaco.editor) {
                                         const editors = monaco.editor.getEditors();
-                                        console.log('Found', editors.length, 'Monaco editors');
                                         
                                         if (editors.length > 0) {
-                                            // Find the active/focused editor or the most recently created one
                                             let activeEditor = editors.find(editor => {
                                                 return editor.hasWidgetFocus() || editor.hasTextFocus();
                                             });
                                             
-                                            // If no focused editor, use the last one (most recently created)
                                             if (!activeEditor) {
                                                 activeEditor = editors[editors.length - 1];
                                             }
                                             
                                             if (activeEditor && activeEditor.getModel()) {
-                                                console.log('Using active Monaco editor for navigation');
-                                                
-                                                // Ensure the editor is focused and ready
                                                 activeEditor.focus();
-                                                
-                                                // Navigate to the specific line
                                                 activeEditor.revealLineInCenter(${lineNumber});
                                                 activeEditor.setPosition({ 
                                                     lineNumber: ${lineNumber}, 
                                                     column: ${columnNumber} 
                                                 });
                                                 
-                                                // Add temporary line highlighting
                                                 const decoration = activeEditor.deltaDecorations([], [{
                                                     range: new monaco.Range(${lineNumber}, 1, ${lineNumber}, 100),
                                                     options: {
@@ -710,40 +693,31 @@ class QualityDashboard {
                                                     }
                                                 }]);
                                                 
-                                                // Remove highlighting after 8 seconds
                                                 setTimeout(() => {
                                                     if (activeEditor && !activeEditor.isDisposed()) {
                                                         activeEditor.deltaDecorations(decoration, []);
                                                     }
                                                 }, 8000);
                                                 
-                                                console.log('Navigation completed successfully on line ${lineNumber}');
-                                                return; // Success - exit retry loop
+                                                return;
                                             }
                                         }
                                     }
                                     
-                                    // Retry with progressive delay
                                     setTimeout(() => waitForActiveEditor(attempts + 1), 500);
                                 };
                                 
-                                // Start Monaco detection after editor setup delay
                                 setTimeout(() => waitForActiveEditor(), 800);
-                            } else {
-                                console.log('Node ${nodeId} not found in RED.nodes');
                             }
-                        } else {
-                            console.log('RED object not available');
                         }
                     })();
                 `;
                 
                 nodeRedWindow.eval(script);
                 navigationCompleted = true;
-                console.log('Single smart navigation attempt initiated');
                 
             } catch (error) {
-                console.warn('Navigation attempt failed:', error);
+                // Navigation attempt failed silently
             }
         }, 1500); // Single optimized delay
         
@@ -752,14 +726,13 @@ class QualityDashboard {
             try {
                 const enhancedUrl = `/#flow/${flowId}?node=${nodeId}&line=${lineNumber}`;
                 nodeRedWindow.location.href = enhancedUrl;
-                console.log('Backup URL navigation:', enhancedUrl);
             } catch (error) {
-                console.warn('URL navigation failed:', error);
+                // URL navigation failed silently
             }
         }, 2000);
     }
     
-    showNavigationModal(nodeId, flowId, lineNumber, columnNumber, nodeName) {
+    showNavigationModal(flowId, lineNumber, columnNumber, nodeName) {
         // Create a modal with instructions if automatic navigation fails
         const modalHTML = `
             <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -838,6 +811,34 @@ class QualityDashboard {
         if (score >= 75) return '#84cc16';
         if (score >= 60) return '#f59e0b';
         return '#ef4444';
+    }
+
+    // Progress bar colors based on quality score (more granular than getQualityColor)
+    getProgressBarColor(score) {
+        // A+ (98-100): Pure green
+        if (score >= 98) return '#22c55e';
+        // A (95-97): Green
+        if (score >= 95) return '#16a34a';
+        // A- (90-94): Green with slight yellow tint
+        if (score >= 90) return '#65a30d';
+        
+        // B+ (85-89): Yellow-green (similar to A-)
+        if (score >= 85) return '#84cc16';
+        // B (80-84): Yellow
+        if (score >= 80) return '#eab308';
+        // B- (70-79): Yellow-orange
+        if (score >= 70) return '#f59e0b';
+        
+        // C+ (60-69): Orange
+        if (score >= 60) return '#f97316';
+        // C (50-59): Orange-red
+        if (score >= 50) return '#ea580c';
+        // D (35-49): Red-orange
+        if (score >= 35) return '#dc2626';
+        // D- (20-34): Red
+        if (score >= 20) return '#b91c1c';
+        // F (0-19): Dark red
+        return '#991b1b';
     }
 
     getQualityGrade(score) {
