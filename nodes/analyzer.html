@@ -849,6 +849,131 @@
             }
         }
         
+        // Navigation helper for flow variables
+        function navigateToFlowVariable(variableName, currentNodeId) {
+            const currentFlowId = RED.workspaces.active();
+            
+            // Get flow name for better debugging
+            let flowName = `Flow ${currentFlowId.substring(0, 8)}`;
+            RED.nodes.eachNode(function(n) {
+                if (n.type === 'tab' && n.id === currentFlowId) {
+                    flowName = n.label || n.name || flowName;
+                }
+            });
+            
+            console.log(`Searching for flow.set('${variableName}') in flow "${flowName}" (${currentFlowId})`);
+            
+            // First, trigger a fresh scan by sending a message to any code-analyzer node in this flow
+            const analyzerNodes = [];
+            RED.nodes.eachNode(function(node) {
+                if (node.type === 'code-analyzer' && node.z === currentFlowId) {
+                    analyzerNodes.push(node);
+                }
+            });
+            
+            if (analyzerNodes.length > 0) {
+                console.log('Found analyzer node in current flow, proceeding...');
+                // Just proceed - the analyzer should have scanned recently
+                fetchAndNavigate();
+            } else {
+                console.log('No analyzer node found in current flow, proceeding anyway...');
+                // No analyzer node found, proceed anyway
+                fetchAndNavigate();
+            }
+            
+            function fetchAndNavigate() {
+                // Fetch flow variable mapping from API
+                fetch(`/code-analyzer/flow-variables/${currentFlowId}`)
+                    .then(response => response.json())
+                    .then(flowVariableMap => {
+                        console.log(`Received flow variable map for "${flowName}":`, flowVariableMap);
+                        const variable = flowVariableMap[variableName];
+                        console.log(`Variable '${variableName}' data:`, variable);
+                        
+                        if (!variable || !variable.sets || variable.sets.length === 0) {
+                            RED.notify(`No flow.set('${variableName}') found in flow "${flowName}"`, 'warning');
+                            return;
+                        }
+                        
+                        navigateToVariable(variable, variableName);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching flow variables:', error);
+                        RED.notify('Error fetching flow variable information', 'error');
+                    });
+            }
+            
+            function navigateToVariable(variable, variableName) {
+                    
+                    // Find the closest set call (prioritize same node, then by line number)
+                    let targetSet = variable.sets[0]; // Default to first
+                    
+                    // Prefer sets from the same node if available
+                    const sameNodeSets = variable.sets.filter(s => s.nodeId === currentNodeId);
+                    if (sameNodeSets.length > 0) {
+                        targetSet = sameNodeSets[0];
+                    }
+                    
+                    // If multiple options, let user choose
+                    if (variable.sets.length > 1) {
+                        const options = variable.sets.map((set, index) => 
+                            `${index + 1}. ${set.nodeName} (line ${set.line})`
+                        ).join('\n');
+                        
+                        const choice = prompt(
+                            `Found ${variable.sets.length} flow.set('${variableName}') calls:\n\n${options}\n\nEnter number (1-${variable.sets.length}) or press Cancel:`
+                        );
+                        
+                        if (choice && !isNaN(choice)) {
+                            const choiceIndex = parseInt(choice) - 1;
+                            if (choiceIndex >= 0 && choiceIndex < variable.sets.length) {
+                                targetSet = variable.sets[choiceIndex];
+                            }
+                        } else if (choice === null) {
+                            return; // User cancelled
+                        }
+                    }
+                    
+                    // Navigate to target node and line
+                    const targetNode = RED.nodes.node(targetSet.nodeId);
+                    if (targetNode) {
+                        // Open the target node's editor
+                        RED.editor.edit(targetNode);
+                        
+                        // Wait a bit for editor to open, then highlight the line
+                        setTimeout(() => {
+                            monaco.editor.getEditors().forEach(editorInstance => {
+                                if (editorInstance.getModel()) {
+                                    // Jump to the line and highlight
+                                    editorInstance.revealLineInCenter(targetSet.line);
+                                    editorInstance.setPosition({ 
+                                        lineNumber: targetSet.line, 
+                                        column: targetSet.column 
+                                    });
+                                    
+                                    // Highlight the range temporarily
+                                    const decoration = editorInstance.deltaDecorations([], [{
+                                        range: new monaco.Range(targetSet.line, targetSet.column, targetSet.line, targetSet.endColumn),
+                                        options: {
+                                            className: 'highlighted-line-error',
+                                            isWholeLine: false
+                                        }
+                                    }]);
+                                    
+                                    // Remove highlight after 3 seconds
+                                    setTimeout(() => {
+                                        editorInstance.deltaDecorations(decoration, []);
+                                    }, 3000);
+                                }
+                            });
+                        }, 500);
+                        
+                        RED.notify(`Navigated to flow.set('${variableName}') in ${targetSet.nodeName}`, 'success');
+                    } else {
+                        RED.notify(`Could not find node ${targetSet.nodeName}`, 'error');
+                    }
+            }
+        }
         
         if (RED.editor.codeEditor) {
             const originalCreateEditor = RED.editor.codeEditor.create;
@@ -912,6 +1037,90 @@
                                 .catch(error => {
                                     console.error('Error in Monaco editor highlighting:', error);
                                 });
+                            
+                            // Add flow variable click-to-find functionality
+                            setTimeout(() => {
+                                monaco.editor.getEditors().forEach(editorInstance => {
+                                    // Add click handler for flow.get() calls
+                                    editorInstance.onMouseDown((e) => {
+                                        if (e.event.ctrlKey || e.event.metaKey) { // Ctrl+Click or Cmd+Click
+                                            const position = e.target.position;
+                                            if (position) {
+                                                const model = editorInstance.getModel();
+                                                const line = model.getLineContent(position.lineNumber);
+                                                
+                                                // Check if click is on a flow.get() call
+                                                const flowGetMatch = line.match(/flow\.get\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
+                                                if (flowGetMatch) {
+                                                    flowGetMatch.forEach(match => {
+                                                        const variableNameMatch = match.match(/flow\.get\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+                                                        if (variableNameMatch) {
+                                                            const variableName = variableNameMatch[1];
+                                                            const startIndex = line.indexOf(match);
+                                                            const endIndex = startIndex + match.length;
+                                                            
+                                                            // Check if click was within this flow.get() call
+                                                            if (position.column >= startIndex + 1 && position.column <= endIndex + 1) {
+                                                                navigateToFlowVariable(variableName, nodeId);
+                                                                e.event.preventDefault();
+                                                                e.event.stopPropagation();
+                                                                return;
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    });
+                                    
+                                    // Add hover info for flow variables
+                                    editorInstance.addAction({
+                                        id: 'find-flow-variable-source',
+                                        label: 'Find Flow Variable Source',
+                                        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.F12],
+                                        contextMenuGroupId: 'navigation',
+                                        contextMenuOrder: 1.5,
+                                        run: function(editor) {
+                                            const position = editor.getPosition();
+                                            const model = editor.getModel();
+                                            const line = model.getLineContent(position.lineNumber);
+                                            
+                                            // Check if cursor is on a flow.get() call
+                                            const flowGetMatch = line.match(/flow\.get\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
+                                            if (flowGetMatch) {
+                                                flowGetMatch.forEach(match => {
+                                                    const variableNameMatch = match.match(/flow\.get\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+                                                    if (variableNameMatch) {
+                                                        const variableName = variableNameMatch[1];
+                                                        const startIndex = line.indexOf(match);
+                                                        const endIndex = startIndex + match.length;
+                                                        
+                                                        // Check if cursor is within this flow.get() call
+                                                        if (position.column >= startIndex + 1 && position.column <= endIndex + 1) {
+                                                            navigateToFlowVariable(variableName, nodeId);
+                                                            return;
+                                                        }
+                                                    }
+                                                });
+                                            } else {
+                                                monaco.editor.setModelMarkers(model, 'flow-variable-info', [{
+                                                    startLineNumber: position.lineNumber,
+                                                    startColumn: 1,
+                                                    endLineNumber: position.lineNumber,
+                                                    endColumn: 1,
+                                                    message: 'Place cursor on a flow.get() call to find its source',
+                                                    severity: monaco.MarkerSeverity.Info
+                                                }]);
+                                                
+                                                // Clear the marker after 3 seconds
+                                                setTimeout(() => {
+                                                    monaco.editor.setModelMarkers(model, 'flow-variable-info', []);
+                                                }, 3000);
+                                            }
+                                        }
+                                    });
+                                });
+                            }, 200);
                         }
                     }
                     
