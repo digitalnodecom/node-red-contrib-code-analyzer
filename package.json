@@ -22,6 +22,9 @@
     "memory",
     "slack"
   ],
+  "engines": {
+    "node": ">=16.0.0 <24.0.0"
+  },
   "node-red": {
     "version": ">=3.0.0",
     "nodes": {
@@ -30,7 +33,7 @@
   },
   "dependencies": {
     "meriyah": "^6.1.4",
-    "sqlite3": "^5.1.7"
+    "better-sqlite3": "^11.3.0"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
