@@ -3,19 +3,20 @@
 [![CI/CD Pipeline](https://github.com/your-username/node-red-contrib-code-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/node-red-contrib-code-analyzer/actions/workflows/ci.yml)
 [![Coverage Status](https://codecov.io/gh/your-username/node-red-contrib-code-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/node-red-contrib-code-analyzer)
 
-A comprehensive Node-RED package that provides background services to detect debugging artifacts in function nodes and monitor queue performance across Node-RED flows.
+A comprehensive Node-RED development and monitoring package that enhances your Node-RED experience with static code analysis, IDE-like debugging features, queue monitoring, performance tracking, and historical observability through an integrated dashboard.
 
 ## Features
 
-- **🔍 Static Code Analysis**: Detects debugging artifacts in function nodes
-- **🧭 Flow Variable Navigation**: Click-to-find-source for flow.get() calls with IDE-like navigation
-- **📊 Queue Monitoring**: Monitors delay node queues and sends alerts
+- **🔍 Static Code Analysis**: Detects debugging artifacts, code quality issues, and potential problems in function nodes
+- **🎯 IDE-like Click Navigation**: Click on flow.get() variables to instantly navigate to where they were set
+- **💡 IDE-like Variable Inspection**: Hover over flow.get() calls to see current variable values in real-time
+- **📊 Queue Monitoring**: Monitors delay node queues and sends intelligent alerts for bottlenecks
 - **⚡ Performance Monitoring**: Tracks CPU, memory, and event loop metrics with sustained alerting
-- **🔔 Slack Integration**: Sends formatted alerts to Slack channels
-- **📈 Real-time Monitoring**: Continuous background scanning
-- **🎯 Configurable Detection**: Multiple detection levels and thresholds
-- **🖥️ Monaco Editor Integration**: Real-time highlighting and problem markers
-- **📊 Real-time Quality Dashboard**: Web-based dashboard with trends, analytics, and performance metrics
+- **📈 Historical Dashboard**: Web-based dashboard for error observability, trends, analytics, and performance metrics over time
+- **🔔 Slack Integration**: Sends formatted alerts to Slack channels with rich context
+- **🖥️ Monaco Editor Integration**: Real-time highlighting and problem markers in the Node-RED editor
+- **🎛️ Configurable Detection**: Multiple detection levels, thresholds, and customizable rules
+- **📊 Real-time Monitoring**: Continuous background scanning with minimal performance impact
 
 ## Detection Levels
 
