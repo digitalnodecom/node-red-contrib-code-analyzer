@@ -32,8 +32,9 @@
     }
   },
   "dependencies": {
+    "better-sqlite3": "^11.3.0",
     "meriyah": "^6.1.4",
-    "better-sqlite3": "^11.3.0"
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "eslint": "^8.57.0",

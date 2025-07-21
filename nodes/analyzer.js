@@ -55,16 +55,20 @@ module.exports = function(RED) {
         // Initialize Slack notifier
         const slackNotifier = new SlackNotifier(node.slackWebhookUrl, RED);
         
-        // Initialize performance monitor
-        const performanceMonitor = new PerformanceMonitor();
+        // Initialize performance monitor (with database only if enabled)
+        const database = node.databaseEnabled !== false ? RED.qualityDatabase : null;
+        const performanceMonitor = new PerformanceMonitor(database);
         performanceMonitor.updateConfig(node.performanceThresholds);
         
         // Initialize quality metrics calculator
         const qualityMetrics = new QualityMetrics();
         
-        // Initialize database for quality metrics storage
-        if (!RED.qualityDatabase) {
+        // Initialize database for quality metrics storage (only if enabled)
+        if (node.databaseEnabled !== false && !RED.qualityDatabase) {
             RED.qualityDatabase = new PerformanceDatabase();
+        } else if (node.databaseEnabled === false) {
+            // Disable database if explicitly set to false
+            RED.qualityDatabase = null;
         }
         
         let scanTimer;

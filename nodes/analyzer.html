@@ -16,6 +16,7 @@
             slackWebhookUrl: {value: ""},
             performanceMonitoring: {value: false},
             performanceInterval: {value: 10, required: true, validate: RED.validators.number()},
+            databaseEnabled: {value: true},
             cpuThreshold: {value: 75, required: true, validate: RED.validators.number()},
             memoryThreshold: {value: 80, required: true, validate: RED.validators.number()},
             eventLoopThreshold: {value: 20, required: true, validate: RED.validators.number()},
@@ -131,6 +132,15 @@
             const performanceThresholdRows = $('.form-row-performanceThreshold');
             const performanceIntervalRow = $('.form-row-performanceInterval');
             
+            // Database logic
+            const databaseCheckbox = $('#node-input-databaseEnabled');
+            const databaseRows = $('.form-row-database');
+            
+            function updateDatabaseVisibility() {
+                const isDatabaseEnabled = databaseCheckbox.prop('checked');
+                databaseRows.toggle(isDatabaseEnabled);
+            }
+            
             function updatePerformanceVisibility() {
                 const isPerformanceMonitoringEnabled = performanceMonitoringCheckbox.prop('checked');
                 performanceThresholdRows.toggle(isPerformanceMonitoringEnabled);
@@ -154,9 +164,11 @@
             }
             
             performanceMonitoringCheckbox.on('change', updatePerformanceVisibility);
+            databaseCheckbox.on('change', updateDatabaseVisibility);
             
-            // Initial performance visibility setup
+            // Initial visibility setup
             updatePerformanceVisibility();
+            updateDatabaseVisibility();
             
             // Load database path on initialization
             updateDatabasePath();
@@ -2154,6 +2166,12 @@
             </div>
             
             <div class="form-row-stacked">
+                <label for="node-input-databaseEnabled"><i class="fa fa-database"></i> Enable Database Storage</label>
+                <input type="checkbox" id="node-input-databaseEnabled" checked>
+                <div class="form-tips">Enable SQLite database for metrics storage. Disable if experiencing compatibility issues.</div>
+            </div>
+            
+            <div class="form-row-stacked form-row-database" style="display: none;">
                 <label for="node-input-dbRetentionDays"><i class="fa fa-database"></i> Database Retention (days)</label>
                 <input type="number" id="node-input-dbRetentionDays" placeholder="7" min="1" max="30">
                 <div class="form-tips">Keep quality metrics and performance data for this many days (1-30 days)</div>
