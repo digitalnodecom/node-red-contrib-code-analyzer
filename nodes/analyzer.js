@@ -74,7 +74,7 @@ module.exports = function(RED) {
         
         
         
-        function scanCurrentFlow() {
+        async function scanCurrentFlow() {
             if (!node.codeAnalysis) {
                 // Code analysis disabled - just update node status
                 node.status({
@@ -243,19 +243,20 @@ module.exports = function(RED) {
                         flowQualityMetrics.complexityScore
                     ).catch(err => node.warn(`Failed to store flow quality metrics: ${err.message}`));
                     
-                    // Store node-level metrics
-                    flowQualityMetrics.nodeMetrics.forEach(nodeMetric => {
-                        RED.qualityDatabase.storeNodeQualityMetrics(
-                            currentFlowId,
-                            nodeMetric.nodeId,
-                            nodeMetric.nodeName,
-                            nodeMetric.issuesCount,
-                            nodeMetric.issueDetails,
-                            nodeMetric.complexityScore,
-                            nodeMetric.linesOfCode,
-                            nodeMetric.qualityScore
-                        ).catch(err => node.warn(`Failed to store node quality metrics: ${err.message}`));
-                    });
+                    // Store all node-level metrics in a single batch operation
+                    if (flowQualityMetrics.nodeMetrics && flowQualityMetrics.nodeMetrics.length > 0) {
+                        RED.qualityDatabase.storeNodeQualityMetricsBatch(
+                            currentFlowId, 
+                            flowQualityMetrics.nodeMetrics
+                        ).catch(err => node.warn(`Failed to store batch node quality metrics: ${err.message}`));
+                    }
+                }
+                
+                // Calculate and store system-wide trends (with coordination to avoid duplicates)
+                try {
+                    await storeSystemTrends();
+                } catch (error) {
+                    node.warn(`Failed to store system trends: ${error.message}`);
                 }
             } catch (error) {
                 node.warn(`Failed to calculate quality metrics: ${error.message}`);
@@ -281,6 +282,58 @@ module.exports = function(RED) {
                     text: 'No debugging traits found'
                 });
             }
+        }
+        
+        // Store system-wide trends with coordination to prevent duplicates
+        async function storeSystemTrends() {
+            if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
+                return;
+            }
+            
+            // Use a simple coordination mechanism: only the "first" analyzer node stores trends
+            const allAnalyzerNodes = [];
+            RED.nodes.eachNode((nodeConfig) => {
+                if (nodeConfig.type === 'code-analyzer') {
+                    allAnalyzerNodes.push(nodeConfig.id);
+                }
+            });
+            
+            // Sort node IDs and only let the first one store system trends
+            allAnalyzerNodes.sort();
+            if (allAnalyzerNodes[0] !== node.id) {
+                return; // This node is not the coordinator
+            }
+            
+            // Get all current quality data and calculate system trends
+            const qualitySummary = await RED.qualityDatabase.getQualitySummary();
+            
+            
+            const qualityMetrics = new (require('../lib/quality-metrics'))();
+            
+            const transformedFlows = qualitySummary.flows.map(flow => ({
+                totalFunctionNodes: flow.total_function_nodes,
+                totalIssues: flow.total_issues,
+                nodesWithIssues: flow.nodes_with_issues,
+                nodesWithCriticalIssues: flow.nodes_with_critical_issues || 0,
+                qualityScore: flow.quality_score,
+                complexityScore: flow.complexity_score
+            }));
+
+            const systemTrends = qualityMetrics.calculateSystemQualityTrends(transformedFlows);
+            
+            
+            // Store system trends with a small delay to avoid race conditions
+            setTimeout(async () => {
+                try {
+                    await Promise.all([
+                        RED.qualityDatabase.storeQualityTrend('overall_quality', systemTrends.overallQuality, systemTrends.flowCount, systemTrends.affectedNodes),
+                        RED.qualityDatabase.storeQualityTrend('technical_debt', systemTrends.technicalDebt, systemTrends.flowCount, systemTrends.affectedNodes),
+                        RED.qualityDatabase.storeQualityTrend('complexity', systemTrends.complexity, systemTrends.flowCount, systemTrends.affectedNodes)
+                    ]);
+                } catch (error) {
+                    node.warn(`Failed to store coordinated system trends: ${error.message}`);
+                }
+            }, 200); // 200ms delay to let all flow scans complete
         }
         
         function monitorQueues() {
@@ -399,10 +452,12 @@ module.exports = function(RED) {
         }
         
         function startScanning() {
-            scanCurrentFlow();
+            scanCurrentFlow().catch(err => node.warn(`Initial scan failed: ${err.message}`));
             
             if (node.codeAnalysis && node.scanInterval > 0) {
-                scanTimer = setInterval(scanCurrentFlow, node.scanInterval);
+                scanTimer = setInterval(() => {
+                    scanCurrentFlow().catch(err => node.warn(`Scheduled scan failed: ${err.message}`));
+                }, node.scanInterval * 1000);
             }
             
             // Start queue monitoring if enabled
@@ -419,7 +474,7 @@ module.exports = function(RED) {
         
         node.on('input', function(msg) {
             if (node.codeAnalysis) {
-                scanCurrentFlow();
+                scanCurrentFlow().catch(err => node.warn(`Manual scan failed: ${err.message}`));
                 msg.payload = { action: 'scan_completed', timestamp: new Date().toISOString() };
             } else {
                 msg.payload = { action: 'scan_skipped', reason: 'code_analysis_disabled', timestamp: new Date().toISOString() };
@@ -446,7 +501,7 @@ module.exports = function(RED) {
         });
         
         RED.events.on('nodes-started', function() {
-            scanCurrentFlow();
+            scanCurrentFlow().catch(err => node.warn(`Startup scan failed: ${err.message}`));
         });
         
         setTimeout(startScanning, 1000);
@@ -456,13 +511,12 @@ module.exports = function(RED) {
     
     // API endpoint to get database path for UI display
     RED.httpAdmin.get('/code-analyzer/db-path', function(_, res) {
-        const path = require('path');
-        const dbPath = path.join(process.cwd(), 'performance_metrics.db');
+        const dbPath = require('path').join(process.cwd(), 'performance_metrics.db');
         res.json({ dbPath: dbPath });
     });
     
     // API endpoint to get all flow variable mappings (must be before /:flowId route)
-    RED.httpAdmin.get('/code-analyzer/flow-variables/all-flows', function(req, res) {
+    RED.httpAdmin.get('/code-analyzer/flow-variables/all-flows', function(_, res) {
         const allFlowMaps = RED.flowVariableMaps || {};
         res.json(allFlowMaps);
     });
@@ -620,7 +674,7 @@ module.exports = function(RED) {
     const fs = require('fs');
     
     // Diagnostic endpoint to test if routes are working
-    RED.httpAdmin.get('/code-analyzer/test', function(req, res) {
+    RED.httpAdmin.get('/code-analyzer/test', function(_, res) {
         res.json({ 
             message: 'Code analyzer routes are working!',
             timestamp: new Date().toISOString(),
@@ -633,7 +687,7 @@ module.exports = function(RED) {
         });
     });
     
-    RED.httpAdmin.get('/code-analyzer/dashboard', function(req, res) {
+    RED.httpAdmin.get('/code-analyzer/dashboard', function(_, res) {
         const dashboardPath = path.join(__dirname, '../static/dashboard.html');
         if (fs.existsSync(dashboardPath)) {
             res.sendFile(dashboardPath);
@@ -643,7 +697,7 @@ module.exports = function(RED) {
     });
     
     // Serve dashboard JavaScript file
-    RED.httpAdmin.get('/code-analyzer/dashboard.js', function(req, res) {
+    RED.httpAdmin.get('/code-analyzer/dashboard.js', function(_, res) {
         const jsPath = path.join(__dirname, '../static/dashboard.js');
         if (fs.existsSync(jsPath)) {
             res.setHeader('Content-Type', 'application/javascript');
@@ -670,7 +724,7 @@ module.exports = function(RED) {
     });
 
     // API: Get dashboard summary data
-    RED.httpAdmin.get('/code-analyzer/api/dashboard/summary', async function(req, res) {
+    RED.httpAdmin.get('/code-analyzer/api/dashboard/summary', async function(_, res) {
         try {
             if (!RED.qualityDatabase || !RED.qualityDatabase.initialized) {
                 return res.status(503).json({ error: 'Quality database not available' });
@@ -696,12 +750,7 @@ module.exports = function(RED) {
             // Calculate system-wide trends
             const systemTrends = qualityMetrics.calculateSystemQualityTrends(transformedFlows);
             
-            // Store system trends
-            await Promise.all([
-                RED.qualityDatabase.storeQualityTrend('overall_quality', systemTrends.overallQuality, systemTrends.flowCount, systemTrends.affectedNodes),
-                RED.qualityDatabase.storeQualityTrend('technical_debt', systemTrends.technicalDebt, systemTrends.flowCount, systemTrends.affectedNodes),
-                RED.qualityDatabase.storeQualityTrend('complexity', systemTrends.complexity, systemTrends.flowCount, systemTrends.affectedNodes)
-            ]);
+            // Note: System trends are stored during actual scans, not dashboard requests
 
             const dashboardData = {
                 quality: {
