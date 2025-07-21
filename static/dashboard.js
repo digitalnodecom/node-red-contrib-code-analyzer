@@ -1,4 +1,5 @@
 // Dashboard JavaScript
+/* global Chart */
 class QualityDashboard {
     constructor() {
         this.charts = {};
