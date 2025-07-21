@@ -28,7 +28,8 @@ describe('Analyzer Node', () => {
                 on: jest.fn()
             },
             httpAdmin: {
-                get: jest.fn()
+                get: jest.fn(),
+                post: jest.fn()
             }
         };
 
