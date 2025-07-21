@@ -3,7 +3,7 @@
 [![CI/CD Pipeline](https://github.com/your-username/node-red-contrib-code-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/node-red-contrib-code-analyzer/actions/workflows/ci.yml)
 [![Coverage Status](https://codecov.io/gh/your-username/node-red-contrib-code-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/node-red-contrib-code-analyzer)
 
-A comprehensive Node-RED development and monitoring package that enhances your Node-RED experience with static code analysis, IDE-like debugging features, queue monitoring, performance tracking, and historical observability through an integrated dashboard.
+A comprehensive Node-RED package that provides static code analysis, performance monitoring, queue monitoring, and IDE-like development helpers to enhance your Node-RED development experience with intelligent debugging and observability features.
 
 ## Features
 
