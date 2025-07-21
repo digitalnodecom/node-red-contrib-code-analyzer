@@ -322,18 +322,6 @@ module.exports = function(RED) {
             const systemTrends = qualityMetrics.calculateSystemQualityTrends(transformedFlows);
             
             
-            // Store system trends with a small delay to avoid race conditions
-            setTimeout(async () => {
-                try {
-                    await Promise.all([
-                        RED.qualityDatabase.storeQualityTrend('overall_quality', systemTrends.overallQuality, systemTrends.flowCount, systemTrends.affectedNodes),
-                        RED.qualityDatabase.storeQualityTrend('technical_debt', systemTrends.technicalDebt, systemTrends.flowCount, systemTrends.affectedNodes),
-                        RED.qualityDatabase.storeQualityTrend('complexity', systemTrends.complexity, systemTrends.flowCount, systemTrends.affectedNodes)
-                    ]);
-                } catch (error) {
-                    node.warn(`Failed to store coordinated system trends: ${error.message}`);
-                }
-            }, 200); // 200ms delay to let all flow scans complete
         }
         
         function monitorQueues() {
@@ -511,7 +499,9 @@ module.exports = function(RED) {
     
     // API endpoint to get database path for UI display
     RED.httpAdmin.get('/code-analyzer/db-path', function(_, res) {
-        const dbPath = require('path').join(process.cwd(), 'performance_metrics.db');
+        const dbPath = RED.qualityDatabase && RED.qualityDatabase.dbPath 
+            ? RED.qualityDatabase.dbPath 
+            : require('path').join(process.cwd(), 'performance_metrics.db');
         res.json({ dbPath: dbPath });
     });
     
@@ -781,14 +771,10 @@ module.exports = function(RED) {
             const hours = parseInt(req.query.hours) || 24;
             const limit = parseInt(req.query.limit) || 100;
 
-            const [qualityTrends, trendAnalysis] = await Promise.all([
-                RED.qualityDatabase.getCodeQualityTrends(hours, limit),
-                RED.qualityDatabase.getQualityTrendAnalysis('overall_quality', hours)
-            ]);
+            const qualityTrends = await RED.qualityDatabase.getCodeQualityTrends(hours, limit);
 
             res.json({
                 trends: qualityTrends,
-                analysis: trendAnalysis,
                 timeframe: `${hours} hours`,
                 timestamp: new Date().toISOString()
             });
