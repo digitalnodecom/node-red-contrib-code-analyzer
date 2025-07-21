@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-code-analyzer",
-  "version": "1.0.0",
+  "version": "0.2.1",
   "description": "A Node-RED package that provides a background service to detect debugging artifacts in function nodes across Node-RED flows. Features performance monitoring (CPU, memory, event loop), queue monitoring, and Slack alerting.",
   "main": "nodes/analyzer.js",
   "scripts": {
