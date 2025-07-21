@@ -25,7 +25,24 @@ jobs:
         
       - name: Extract version and detect pre-release
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          # Extract version from tag name, handle both GITHUB_REF and GITHUB_REF_NAME
+          if [[ -n "$GITHUB_REF_NAME" ]]; then
+            VERSION=${GITHUB_REF_NAME#v}
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          
+          # Debug output
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "GITHUB_REF_NAME: $GITHUB_REF_NAME"
+          echo "Extracted VERSION: $VERSION"
+          
+          # Validate version is not empty
+          if [[ -z "$VERSION" ]]; then
+            echo "Error: Could not extract version from tag"
+            exit 1
+          fi
+          
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Publishing version: $VERSION"
           
