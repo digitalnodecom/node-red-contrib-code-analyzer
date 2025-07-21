@@ -22,6 +22,9 @@
     "memory",
     "slack"
   ],
+  "engines": {
+    "node": ">=16.0.0 <24.0.0"
+  },
   "node-red": {
     "version": ">=3.0.0",
     "nodes": {
