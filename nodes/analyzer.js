@@ -929,7 +929,11 @@ module.exports = function(RED) {
                 overallGrade: qualityMetrics.getQualityGrade(flowMetrics.qualityScore),
                 healthPercentage: Math.round((functionNodes.length - functionNodes.filter(n => n.issuesCount > 0).length) / Math.max(1, functionNodes.length) * 100),
                 nodes: functionNodes,
-                recommendations: qualityMetrics.generateRecommendations(flowMetrics),
+                recommendations: qualityMetrics.generateRecommendations({
+                    ...flowMetrics,
+                    totalIssues: functionNodes.reduce((sum, node) => sum + node.issuesCount, 0),
+                    issueTypes: [...new Set(functionNodes.flatMap(node => node.issueTypes || []))]
+                }),
                 timestamp: new Date().toISOString()
             };
 
