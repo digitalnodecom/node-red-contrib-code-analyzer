@@ -457,7 +457,7 @@ module.exports = function(RED) {
             if (node.codeAnalysis && node.scanInterval > 0) {
                 scanTimer = setInterval(() => {
                     scanCurrentFlow().catch(err => node.warn(`Scheduled scan failed: ${err.message}`));
-                }, node.scanInterval * 1000);
+                }, node.scanInterval);
             }
             
             // Start queue monitoring if enabled
