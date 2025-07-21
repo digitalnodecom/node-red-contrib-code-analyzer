@@ -23,21 +23,47 @@ jobs:
       - name: Run tests
         run: npm test
         
-      - name: Extract version from tag
+      - name: Extract version and detect pre-release
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Publishing version: $VERSION"
+          
+          # Check if this is a pre-release (contains alpha, beta, rc, or other pre-release identifiers)
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            echo "NPM_TAG=latest" >> $GITHUB_ENV
+            echo "Detected as: Latest release"
+          else
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            # Extract pre-release tag (alpha, beta, rc, etc.)
+            if [[ "$VERSION" =~ -([a-zA-Z]+) ]]; then
+              PRE_TAG=${BASH_REMATCH[1]}
+              echo "NPM_TAG=$PRE_TAG" >> $GITHUB_ENV
+              echo "Detected as: Pre-release with tag '$PRE_TAG'"
+            else
+              echo "NPM_TAG=next" >> $GITHUB_ENV
+              echo "Detected as: Pre-release with default 'next' tag"
+            fi
+          fi
         
       - name: Update package.json version
         run: npm version $VERSION --no-git-tag-version
         
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --access public --tag $NPM_TAG
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           
       - name: Notify success
         run: |
           echo "✅ Successfully published node-red-contrib-code-analyzer@$VERSION to npm"
+          echo "🏷️  Published with tag: $NPM_TAG"
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            echo "⚠️  This is a pre-release version"
+            echo "📦 Install with: npm install node-red-contrib-code-analyzer@$NPM_TAG"
+          else
+            echo "🚀 This is a stable release"
+            echo "📦 Install with: npm install node-red-contrib-code-analyzer"
+          fi
           echo "📦 Package URL: https://www.npmjs.com/package/node-red-contrib-code-analyzer"
