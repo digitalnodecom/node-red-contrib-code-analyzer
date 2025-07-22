@@ -331,8 +331,8 @@ class QualityDashboard {
                                 ${flowDetails.recommendations.map(rec => `
                                     <div class="flex items-start">
                                         <i class="fas ${rec.type === 'critical' ? 'fa-exclamation-circle text-red-600' : 
-                                                    rec.type === 'warning' ? 'fa-exclamation-triangle text-orange-600' : 
-                                                    'fa-info-circle text-blue-600'} text-sm mt-0.5 mr-2"></i>
+        rec.type === 'warning' ? 'fa-exclamation-triangle text-orange-600' : 
+            'fa-info-circle text-blue-600'} text-sm mt-0.5 mr-2"></i>
                                         <div class="text-sm text-gray-700">
                                             <span class="font-medium">${rec.message}</span> - ${rec.action}
                                         </div>
@@ -410,11 +410,11 @@ class QualityDashboard {
                                         ${node.qualityGrade.grade}
                                     </span>
                                     ${node.criticalIssues > 0 ? 
-                                        `<i class="fas fa-exclamation-circle text-red-600 ml-2" title="${node.criticalIssues} critical issues"></i>` : 
-                                        node.warningIssues > 0 ? 
-                                        `<i class="fas fa-exclamation-triangle text-orange-600 ml-2" title="${node.warningIssues} warnings"></i>` :
-                                        `<i class="fas fa-check-circle text-green-600 ml-2" title="No issues"></i>`
-                                    }
+        `<i class="fas fa-exclamation-circle text-red-600 ml-2" title="${node.criticalIssues} critical issues"></i>` : 
+        node.warningIssues > 0 ? 
+            `<i class="fas fa-exclamation-triangle text-orange-600 ml-2" title="${node.warningIssues} warnings"></i>` :
+            '<i class="fas fa-check-circle text-green-600 ml-2" title="No issues"></i>'
+}
                                 </div>
                                 <div class="text-xs text-gray-600 mt-1">
                                     ${node.linesOfCode} lines • Complexity: ${node.complexityScore} • Quality: ${node.qualityScore}%
@@ -429,10 +429,10 @@ class QualityDashboard {
                             </h6>
                             ${node.issues.map(issue => `
                                 <div class="flex items-start p-2 bg-white rounded border-l-4 ${
-                                    issue.severity === 'critical' ? 'border-red-500' :
-                                    issue.severity === 'warning' ? 'border-orange-500' : 
-                                    'border-blue-500'
-                                } hover:bg-gray-50 cursor-pointer transition-colors group error-item"
+    issue.severity === 'critical' ? 'border-red-500' :
+        issue.severity === 'warning' ? 'border-orange-500' : 
+            'border-blue-500'
+} hover:bg-gray-50 cursor-pointer transition-colors group error-item"
                                      data-node-id="${node.nodeId}" 
                                      data-flow-id="${node.navigation.flowId}" 
                                      data-line="${issue.line}" 
@@ -495,9 +495,9 @@ class QualityDashboard {
         container.innerHTML = nodes.map(node => {
             const qualityColor = this.getQualityColor(node.quality_score);
             const severityIcon = node.issues_count >= 5 ? 'fa-exclamation-circle' : 
-                               node.issues_count >= 3 ? 'fa-exclamation-triangle' : 'fa-info-circle';
+                node.issues_count >= 3 ? 'fa-exclamation-triangle' : 'fa-info-circle';
             const severityColor = node.issues_count >= 5 ? '#ef4444' : 
-                                 node.issues_count >= 3 ? '#f59e0b' : '#3b82f6';
+                node.issues_count >= 3 ? '#f59e0b' : '#3b82f6';
             
             return `
                 <div class="flex items-center p-4 bg-gray-50 rounded-lg">
@@ -857,10 +857,10 @@ class QualityDashboard {
 
     getAlertIcon(metricType) {
         switch (metricType) {
-            case 'cpu': return 'fa-microchip';
-            case 'memory': return 'fa-memory';
-            case 'eventLoop': return 'fa-clock';
-            default: return 'fa-exclamation-triangle';
+        case 'cpu': return 'fa-microchip';
+        case 'memory': return 'fa-memory';
+        case 'eventLoop': return 'fa-clock';
+        default: return 'fa-exclamation-triangle';
         }
     }
 

@@ -136,30 +136,306 @@
                 performanceThresholdRows.toggle(isPerformanceMonitoringEnabled);
                 performanceIntervalRow.toggle(isPerformanceMonitoringEnabled);
                 
-                // Update database path display
-                updateDatabasePath();
+                // Update database status display
+                updateDatabaseStatus();
             }
             
-            function updateDatabasePath() {
-                // Get the database path from our API endpoint
-                fetch('/code-analyzer/db-path')
+            function updateDatabaseStatus() {
+                // Check database status
+                fetch('/code-analyzer/api/database-status')
                     .then(response => response.json())
                     .then(data => {
-                        $('#db-path-text').text(data.dbPath);
+                        updateDatabaseUI(data);
                     })
                     .catch(error => {
-                        console.error('Error fetching database path:', error);
-                        $('#db-path-text').text('Error loading database path');
+                        console.error('Error checking database status:', error);
+                        $('#db-status-text').text('Error checking database status');
+                        showDatabaseCreationSection(true);
+                        setDbDependentFeaturesEnabled(false);
                     });
             }
+
+            function updateDatabaseUI(status) {
+                if (status.exists && status.initialized) {
+                    // Database exists and is ready
+                    $('#db-status-display').css('background-color', '#d4edda').css('color', '#155724').css('border', '1px solid #c3e6cb');
+                    $('#db-status-text').text('✓ Database is ready and initialized');
+                    $('#db-path-text').text(status.dbPath);
+                    // ALWAYS keep creation section visible if there's an active message OR it was previously shown
+                    if ($('#db-creation-message').is(':visible') || $('#db-creation-section').is(':visible')) {
+                        showDatabaseCreationSection(true); // Ensure it stays visible
+                    } else {
+                        showDatabaseCreationSection(false); // Only hide if never used
+                    }
+                    setDbDependentFeaturesEnabled(true);
+                } else if (status.exists && !status.initialized) {
+                    // Database exists but not initialized
+                    $('#db-status-display').css('background-color', '#fff3cd').css('color', '#856404').css('border', '1px solid #ffeeba');
+                    $('#db-status-text').text('⚠ Database exists but not initialized');
+                    $('#db-path-text').text(status.dbPath);
+                    showDatabaseCreationSection(true);
+                    setDbDependentFeaturesEnabled(false);
+                } else {
+                    // Database does not exist
+                    $('#db-status-display').css('background-color', '#f8d7da').css('color', '#721c24').css('border', '1px solid #f5c6cb');
+                    $('#db-status-text').text('✗ Database not created');
+                    $('#db-path-text').text(status.dbPath || 'Database path not available');
+                    showDatabaseCreationSection(true);
+                    setDbDependentFeaturesEnabled(false);
+                }
+            }
+
+            function showDatabaseCreationSection(show) {
+                $('#db-creation-section').toggle(show);
+            }
+
+            function setDbDependentFeaturesEnabled(enabled) {
+                // Gray out/enable database-dependent settings
+                const $dbSettings = $('#db-dependent-settings');
+                const $perfMonitoring = $('#performance-monitoring-tab .form-row-performanceThreshold, #performance-monitoring-tab .form-row-performanceInterval');
+                const $dashboardRow = $('.form-row').has('#dashboard-link');
+                
+                if (enabled) {
+                    $dbSettings.css('opacity', '1').find('input, select').prop('disabled', false);
+                    $perfMonitoring.css('opacity', '1').find('input, select').prop('disabled', false);
+                    $dashboardRow.css('opacity', '1').find('a, button').prop('disabled', false);
+                } else {
+                    $dbSettings.css('opacity', '0.5').find('input, select').prop('disabled', true);
+                    $perfMonitoring.css('opacity', '0.5').find('input, select').prop('disabled', true);
+                    $dashboardRow.css('opacity', '0.5').find('a, button').prop('disabled', true);
+                    
+                    // Show message about needing to create database
+                    if (!enabled && $('#db-dependency-message').length === 0) {
+                        $dbSettings.prepend('<div id="db-dependency-message" style="background: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #ffeeba;">📋 Create the database above to enable these features</div>');
+                    }
+                    
+                    // Add message to performance monitoring tab
+                    if (!enabled && $('#perf-dependency-message').length === 0) {
+                        $('#performance-monitoring-tab .form-row-performanceThreshold').first().before('<div id="perf-dependency-message" style="background: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #ffeeba;">📋 Create the database in General tab to enable performance monitoring storage</div>');
+                    }
+                }
+                
+                if (enabled) {
+                    $('#db-dependency-message').remove();
+                    $('#perf-dependency-message').remove();
+                }
+            }
+
+            function createDatabase() {
+                const $button = $('#create-db-button');
+                const $message = $('#db-creation-message');
+                
+                // Disable button and show initial loading
+                $button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Initializing...');
+                
+                // Clear previous messages and show progress container  
+                $message.html(`
+                    <button id="db-message-close" style="position: absolute; top: 4px; right: 6px; background: none; border: none; font-size: 16px; cursor: pointer; color: inherit; opacity: 0.7; z-index: 10;" title="Close message">×</button>
+                    <div id="db-progress-log" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.4; padding-right: 20px;">
+                        <div style="color: #6c757d; font-style: italic;">🔄 Starting database creation process...</div>
+                    </div>
+                `)
+                        .css('background-color', '#f8f9fa')
+                        .css('color', '#495057')
+                        .css('border', '1px solid #dee2e6')
+                        .show();
+                
+                const $progressLog = $('#db-progress-log');
+                
+                // Use the regular API but display detailed messages from fallback attempts
+                fetch('/code-analyzer/api/create-database', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Simulate progressive message display for better UX
+                    if (data.success && data.creationMessages && data.creationMessages.length > 0) {
+                        displayMessagesProgressively(data.creationMessages, $progressLog, $button, () => {
+                            // Success completion callback
+                            $message.css('background-color', '#d4edda')
+                                   .css('color', '#155724')
+                                   .css('border', '1px solid #c3e6cb');
+                            
+                            $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #155724;">🎉 ${data.message}</div>`);
+                            $progressLog.append(`<div style="margin: 5px 0; color: #155724;">Database location: ${data.dbPath}</div>`);
+                            
+                            if (data.attemptedLocations > 1) {
+                                $progressLog.append(`<div style="margin: 5px 0; color: #856404;">⚠️ Required ${data.attemptedLocations} location attempts (some locations failed)</div>`);
+                            } else {
+                                $progressLog.append(`<div style="margin: 5px 0; color: #6c757d;">✨ Created successfully on first attempt</div>`);
+                            }
+                            
+                            $button.prop('disabled', false).html('<i class="fa fa-check"></i> Database Created');
+                            updateDatabaseStatus();
+                            setTimeout(() => {
+                                $button.html('<i class="fa fa-plus"></i> Create Database');
+                            }, 3000);
+                            
+                            $progressLog.scrollTop($progressLog[0].scrollHeight);
+                        });
+                    } else if (!data.success && data.creationMessages && data.creationMessages.length > 0) {
+                        displayMessagesProgressively(data.creationMessages, $progressLog, $button, () => {
+                            // Error completion callback
+                            $message.css('background-color', '#f8d7da')
+                                   .css('color', '#721c24')
+                                   .css('border', '1px solid #f5c6cb');
+                            
+                            $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #721c24;">❌ ${data.error || 'Creation failed'}</div>`);
+                            if (data.details) {
+                                $progressLog.append(`<div style="margin: 5px 0; color: #721c24;">Details: ${data.details}</div>`);
+                            }
+                            
+                            $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> All Locations Failed');
+                            setTimeout(() => {
+                                $button.html('<i class="fa fa-plus"></i> Create Database');
+                            }, 3000);
+                            
+                            $progressLog.scrollTop($progressLog[0].scrollHeight);
+                        });
+                    } else {
+                        // Handle case without detailed messages (shouldn't happen but fallback)
+                        if (data.success) {
+                            $message.css('background-color', '#d4edda').css('color', '#155724').css('border', '1px solid #c3e6cb');
+                            $progressLog.append(`<div style="color: #155724;">✓ ${data.message}</div>`);
+                            $button.prop('disabled', false).html('<i class="fa fa-check"></i> Database Created');
+                            updateDatabaseStatus();
+                        } else {
+                            $message.css('background-color', '#f8d7da').css('color', '#721c24').css('border', '1px solid #f5c6cb');
+                            $progressLog.append(`<div style="color: #721c24;">✗ ${data.error}</div>`);
+                            $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> Creation Failed');
+                        }
+                        setTimeout(() => {
+                            $button.html('<i class="fa fa-plus"></i> Create Database');
+                        }, 3000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error creating database:', error);
+                    
+                    $message.css('background-color', '#f8d7da')
+                           .css('color', '#721c24')
+                           .css('border', '1px solid #f5c6cb');
+                    
+                    $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #721c24;">❌ Network error: ${error.message}</div>`);
+                    
+                    $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> Network Error');
+                    
+                    setTimeout(() => {
+                        $button.html('<i class="fa fa-plus"></i> Create Database');
+                    }, 3000);
+                });
+            }
+
+            // Function to display messages progressively for better UX
+            function displayMessagesProgressively(messages, $progressLog, $button, completionCallback) {
+                let messageIndex = 0;
+                let attemptNumber = 1;
+                
+                function showNextMessage() {
+                    if (messageIndex >= messages.length) {
+                        // All messages shown, call completion callback
+                        completionCallback();
+                        return;
+                    }
+                    
+                    const msg = messages[messageIndex];
+                    const icon = msg.type === 'success' ? '✓' : 
+                               msg.type === 'error' ? '✗' :
+                               msg.type === 'warning' ? '⚠️' : 'ℹ';
+                    
+                    // Update button text based on message content
+                    if (msg.message.includes('Trying to create database')) {
+                        const location = msg.message.match(/in (.+?) \(/);
+                        if (location) {
+                            $button.html(`<i class="fa fa-spinner fa-spin"></i> Attempt ${attemptNumber}: ${location[1]}`);
+                            attemptNumber++;
+                        }
+                    } else if (msg.message.includes('Waiting 1.5 seconds')) {
+                        $button.html(`<i class="fa fa-clock-o"></i> Waiting...`);
+                    }
+                    
+                    // Add message to log with appropriate colors
+                    $progressLog.append(`<div style="margin: 2px 0; color: ${
+                        msg.type === 'success' ? '#155724' : 
+                        msg.type === 'error' ? '#721c24' :
+                        msg.type === 'warning' ? '#856404' : '#6c757d'
+                    }; ${msg.type === 'warning' ? 'font-weight: bold;' : ''}">${icon} ${msg.message}</div>`);
+                    
+                    // Auto-scroll to bottom
+                    $progressLog.scrollTop($progressLog[0].scrollHeight);
+                    
+                    messageIndex++;
+                    
+                    // Determine delay based on message type
+                    let delay = 500; // Default delay
+                    if (msg.message.includes('Waiting 1.5 seconds')) {
+                        delay = 1500; // Match the actual wait time
+                    } else if (msg.message.includes('Trying to create database')) {
+                        delay = 800; // Slightly longer for attempts
+                    } else if (msg.message.includes('Failed to create database')) {
+                        delay = 1200; // Give time to read error
+                    } else if (msg.type === 'success') {
+                        delay = 600; // Success messages
+                    }
+                    
+                    setTimeout(showNextMessage, delay);
+                }
+                
+                // Start showing messages
+                showNextMessage();
+            }
+
+            // Bind create database button
+            $(document).off('click', '#create-db-button').on('click', '#create-db-button', createDatabase);
+            
+            // Bind close button for database messages (persistent until manually closed)
+            $(document).off('click', '#db-message-close').on('click', '#db-message-close', function() {
+                $('#db-creation-message').hide();
+            });
+            
+            // Auto-close database messages when configuration dialog is closed or cancelled
+            // Store original handlers
+            if (!node._originalOnEditSave) {
+                node._originalOnEditSave = node.oneditsave;
+            }
+            if (!node._originalOnEditCancel) {
+                node._originalOnEditCancel = node.oneditcancel;
+            }
+            
+            // Override handlers to hide message on dialog close
+            node.oneditsave = function() {
+                $('#db-creation-message').hide();
+                if (node._originalOnEditSave) {
+                    return node._originalOnEditSave.apply(this, arguments);
+                }
+            };
+            
+            node.oneditcancel = function() {
+                $('#db-creation-message').hide();
+                if (node._originalOnEditCancel) {
+                    return node._originalOnEditCancel.apply(this, arguments);
+                }
+            };
+            
+            // Add hover effect for close button
+            $(document).off('mouseenter mouseleave', '#db-message-close')
+                       .on('mouseenter', '#db-message-close', function() {
+                           $(this).css('opacity', '1');
+                       })
+                       .on('mouseleave', '#db-message-close', function() {
+                           $(this).css('opacity', '0.7');
+                       });
             
             performanceMonitoringCheckbox.on('change', updatePerformanceVisibility);
             
             // Initial performance visibility setup
             updatePerformanceVisibility();
             
-            // Load database path on initialization
-            updateDatabasePath();
+            // Load database status on initialization
+            updateDatabaseStatus();
         },
         oneditsave: function() {
             // Collect checked queue IDs
@@ -2465,18 +2741,46 @@
                 <div class="form-tips">View comprehensive code quality metrics, trends, and performance analytics in a dedicated dashboard</div>
             </div>
             
-            <div class="form-row-stacked">
-                <label for="node-input-dbRetentionDays"><i class="fa fa-database"></i> Database Retention (days)</label>
-                <input type="number" id="node-input-dbRetentionDays" placeholder="7" min="1" max="30">
-                <div class="form-tips">Keep quality metrics and performance data for this many days (1-30 days)</div>
-            </div>
-            
-            <div class="form-row-stacked">
-                <label><i class="fa fa-database"></i> Database Location</label>
-                <div id="db-path-display" style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 4px; margin-top: 5px; word-break: break-all; font-size: 11px;">
-                    <span id="db-path-text">Loading database path...</span>
+            <!-- Database Management Section -->
+            <div class="form-row-stacked" id="database-management-section">
+                <label><i class="fa fa-database"></i> Database Management</label>
+                
+                <!-- Database Status -->
+                <div id="db-status-display" style="margin: 8px 0; padding: 8px; border-radius: 4px; font-size: 12px;">
+                    <span id="db-status-text">Checking database status...</span>
                 </div>
-                <div class="form-tips">SQLite database file location for code quality metrics and performance data</div>
+                
+                <!-- Create Database Button and Messages -->
+                <div id="db-creation-section" style="display: none;">
+                    <div style="margin: 10px 0;">
+                        <button type="button" id="create-db-button" class="red-ui-button" style="margin-right: 10px;">
+                            <i class="fa fa-plus"></i> Create Database
+                        </button>
+                        <div id="db-creation-message" style="margin-top: 8px; padding: 8px; border-radius: 4px; display: none; position: relative;">
+                            <button id="db-message-close" style="position: absolute; top: 4px; right: 6px; background: none; border: none; font-size: 16px; cursor: pointer; color: inherit; opacity: 0.7;" title="Close message">×</button>
+                        </div>
+                    </div>
+                    <div class="form-tips">
+                        The database is required for quality dashboard, database retention, and performance monitoring features.
+                    </div>
+                </div>
+                
+                <!-- Database-dependent settings -->
+                <div id="db-dependent-settings">
+                    <div class="form-row-stacked" style="margin-top: 15px;">
+                        <label for="node-input-dbRetentionDays"><i class="fa fa-calendar"></i> Database Retention (days)</label>
+                        <input type="number" id="node-input-dbRetentionDays" placeholder="7" min="1" max="30">
+                        <div class="form-tips">Keep quality metrics and performance data for this many days (1-30 days)</div>
+                    </div>
+                    
+                    <div class="form-row-stacked">
+                        <label><i class="fa fa-folder-open"></i> Database Location</label>
+                        <div id="db-path-display" style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 4px; margin-top: 5px; word-break: break-all; font-size: 11px;">
+                            <span id="db-path-text">Loading database path...</span>
+                        </div>
+                        <div class="form-tips">SQLite database file location for code quality metrics and performance data</div>
+                    </div>
+                </div>
             </div>
         </div>
         

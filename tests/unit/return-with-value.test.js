@@ -12,7 +12,7 @@ return msg;`;
     });
     
     test('should NOT detect return with object literal', () => {
-        const code = `return { status: 'success', data: msg.payload };`;
+        const code = 'return { status: \'success\', data: msg.payload };';
         
         const issues = detectDebuggingTraits(code, 1);
         const topLevelReturns = issues.filter(issue => issue.type === 'top-level-return');
@@ -31,7 +31,7 @@ return result + 1;`;
     });
     
     test('should NOT detect return with function call', () => {
-        const code = `return processMessage(msg);`;
+        const code = 'return processMessage(msg);';
         
         const issues = detectDebuggingTraits(code, 1);
         const topLevelReturns = issues.filter(issue => issue.type === 'top-level-return');
