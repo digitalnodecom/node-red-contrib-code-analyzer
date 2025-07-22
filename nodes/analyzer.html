@@ -2272,19 +2272,25 @@
                                                 // Ignore command
                                                 monaco.editor.registerCommand('nr-analyzer.ignore', function(accessor, editor, error) {
                                                     try {
+                                                        const model = editor.getModel();
                                                         const startLine = error.line;
                                                         const endLine = error.endLine || error.line;
+                                                        
+                                                        // Get the indentation of the first comment line to match it
+                                                        const firstCommentLineContent = model.getLineContent(startLine);
+                                                        const indentationMatch = firstCommentLineContent.match(/^(\s*)/);
+                                                        const indentation = indentationMatch ? indentationMatch[1] : '';
                                                         
                                                         // Use executeEdits for more reliable editing
                                                         editor.executeEdits('nr-analyzer', [
                                                             {
                                                                 range: new monaco.Range(startLine, 1, startLine, 1),
-                                                                text: '// @nr-analyzer-ignore-start\n',
+                                                                text: `${indentation}// @nr-analyzer-ignore-start\n`,
                                                                 forceMoveMarkers: true
                                                             },
                                                             {
                                                                 range: new monaco.Range(endLine + 1, 1, endLine + 1, 1),
-                                                                text: '// @nr-analyzer-ignore-end\n',
+                                                                text: `${indentation}// @nr-analyzer-ignore-end\n`,
                                                                 forceMoveMarkers: true
                                                             }
                                                         ]);
