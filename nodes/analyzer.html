@@ -734,13 +734,16 @@
                 ));
             }
             
-            // Level 2: Check for TODO/FIXME comments (still needs line-by-line analysis)
+            // Level 2: Check for TODO/FIXME comments and consecutive inline comments
             if (level >= 2) {
                 const lines = code.split('\n');
+                let consecutiveInlineComments = [];
+                
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const lineNumber = i + 1;
                     
+                    // Check for TODO/FIXME comments
                     const todoMatch = line.match(/(TODO|FIXME):/i);
                     if (todoMatch && !shouldIgnoreLineBrowser(lineNumber, ignoreRegions, ignoreLines, ignoreNextLines)) {
                         issues.push({
@@ -750,6 +753,80 @@
                             column: todoMatch.index + 1,
                             endColumn: line.length + 1,
                             severity: 'info'
+                        });
+                    }
+                    
+                    // Check for consecutive inline comments (// style only, not /* */ style)
+                    const trimmedLine = line.trim();
+                    const inlineCommentMatch = trimmedLine.match(/^\/\/(.*)$/);
+                    
+                    if (inlineCommentMatch) {
+                        // This is an inline comment, add it to our consecutive tracker
+                        consecutiveInlineComments.push({
+                            line: lineNumber,
+                            content: inlineCommentMatch[1].trim(),
+                            originalLine: line
+                        });
+                    } else if (trimmedLine === '' && consecutiveInlineComments.length > 0) {
+                        // Empty line - continue tracking but don't reset (allows for spacing)
+                        continue;
+                    } else {
+                        // Non-comment, non-empty line - check if we have consecutive comments to report
+                        if (consecutiveInlineComments.length >= 2) {
+                            // Check if any of these lines should be ignored
+                            let shouldIgnoreGroup = false;
+                            for (const comment of consecutiveInlineComments) {
+                                if (shouldIgnoreLineBrowser(comment.line, ignoreRegions, ignoreLines, ignoreNextLines)) {
+                                    shouldIgnoreGroup = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!shouldIgnoreGroup) {
+                                const firstComment = consecutiveInlineComments[0];
+                                const lastComment = consecutiveInlineComments[consecutiveInlineComments.length - 1];
+                                
+                                issues.push({
+                                    type: 'consecutive-inline-comments',
+                                    message: `Consider removing this commented-out code if no longer needed (${consecutiveInlineComments.length} lines)`,
+                                    line: firstComment.line,
+                                    endLine: lastComment.line,
+                                    column: 1,
+                                    endColumn: lastComment.originalLine.length + 1,
+                                    severity: 'info',
+                                    count: consecutiveInlineComments.length
+                                });
+                            }
+                        }
+                        
+                        // Reset the consecutive comments tracker
+                        consecutiveInlineComments = [];
+                    }
+                }
+                
+                // Handle case where file ends with consecutive inline comments
+                if (consecutiveInlineComments.length >= 2) {
+                    let shouldIgnoreGroup = false;
+                    for (const comment of consecutiveInlineComments) {
+                        if (shouldIgnoreLineBrowser(comment.line, ignoreRegions, ignoreLines, ignoreNextLines)) {
+                            shouldIgnoreGroup = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!shouldIgnoreGroup) {
+                        const firstComment = consecutiveInlineComments[0];
+                        const lastComment = consecutiveInlineComments[consecutiveInlineComments.length - 1];
+                        
+                        issues.push({
+                            type: 'consecutive-inline-comments',
+                            message: `Consider removing this commented-out code if no longer needed (${consecutiveInlineComments.length} lines)`,
+                            line: firstComment.line,
+                            endLine: lastComment.line,
+                            column: 1,
+                            endColumn: lastComment.originalLine.length + 1,
+                            severity: 'info',
+                            count: consecutiveInlineComments.length
                         });
                     }
                 }
