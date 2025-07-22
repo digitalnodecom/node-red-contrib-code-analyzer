@@ -2296,12 +2296,25 @@
                                                 // Remove command  
                                                 monaco.editor.registerCommand('nr-analyzer.remove', function(accessor, editor, error) {
                                                     try {
+                                                        const model = editor.getModel();
                                                         const startLine = error.line;
                                                         const endLine = error.endLine || error.line;
                                                         
+                                                        // Check for empty lines above and below the comment block
+                                                        const lineAbove = startLine > 1 ? model.getLineContent(startLine - 1).trim() : 'not-empty';
+                                                        const lineBelow = endLine < model.getLineCount() ? model.getLineContent(endLine + 1).trim() : 'not-empty';
+                                                        
+                                                        let removeEndLine = endLine + 1; // Default: remove up to next line
+                                                        
+                                                        // If there are empty lines both above and below, remove one extra empty line
+                                                        if (lineAbove === '' && lineBelow === '') {
+                                                            // Remove one of the empty lines to avoid double spacing
+                                                            removeEndLine = endLine + 2; // Remove comment block + one empty line
+                                                        }
+                                                        
                                                         // Use executeEdits to remove lines
                                                         editor.executeEdits('nr-analyzer', [{
-                                                            range: new monaco.Range(startLine, 1, endLine + 1, 1),
+                                                            range: new monaco.Range(startLine, 1, removeEndLine, 1),
                                                             text: '',
                                                             forceMoveMarkers: true
                                                         }]);
