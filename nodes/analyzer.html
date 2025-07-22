@@ -1259,6 +1259,9 @@
                                                 }));
                                                 
                                                 editorInstance.deltaDecorations([], decorations);
+                                                
+                                                // Store errors for Quick Fix actions
+                                                editorInstance.__debugAnalyzerErrors = errors;
                                             });
                                         }, 100);
                                     }
@@ -2162,6 +2165,175 @@
                                         
                                         monaco.languages.registerHoverProvider('javascript', hoverProvider);
                                         window.nrAnalyzerHoverProviderRegistered = true;
+                                        
+                                        // Register Code Actions provider for Quick Fix actions
+                                        if (!window.nrAnalyzerCodeActionsProviderRegistered) {
+                                            // Helper functions for Code Actions
+                                            window.getErrorTypeName = function(errorType) {
+                                                const typeNames = {
+                                                    'console-log': 'console.log',
+                                                    'node-warn': 'node.warn',
+                                                    'debugger-statement': 'debugger statement',
+                                                    'top-level-return': 'return statement',
+                                                    'todo-comment': 'TODO comment',
+                                                    'unused-variable': 'unused variable',
+                                                    'consecutive-inline-comments': 'commented-out code',
+                                                    'multiple-empty-lines': 'empty lines',
+                                                    'hardcoded-test': 'hardcoded value',
+                                                    'hardcoded-debug': 'hardcoded value',
+                                                    'hardcoded-temp': 'hardcoded value',
+                                                    'hardcoded-number': 'hardcoded value'
+                                                };
+                                                return typeNames[errorType] || errorType;
+                                            };
+                                            
+                                            window.isRemovableErrorType = function(errorType) {
+                                                const removableTypes = [
+                                                    'console-log',
+                                                    'node-warn', 
+                                                    'debugger-statement',
+                                                    'top-level-return',
+                                                    'todo-comment',
+                                                    'consecutive-inline-comments',
+                                                    'multiple-empty-lines'
+                                                ];
+                                                return removableTypes.includes(errorType);
+                                            };
+                                            
+                                            const codeActionsProvider = {
+                                                provideCodeActions: function(model, range, context) {
+                                                    try {
+                                                        const actions = [];
+                                                        
+                                                        // Find current editor instance to get stored errors
+                                                        let currentEditor = null;
+                                                        monaco.editor.getEditors().forEach(editor => {
+                                                            if (editor.getModel() === model) {
+                                                                currentEditor = editor;
+                                                            }
+                                                        });
+                                                        
+                                                        if (!currentEditor || !currentEditor.__debugAnalyzerErrors) {
+                                                            return { actions: [], dispose: function() {} };
+                                                        }
+                                                        
+                                                        const errors = currentEditor.__debugAnalyzerErrors;
+                                                        const startLine = range.startLineNumber;
+                                                        const endLine = range.endLineNumber;
+                                                        
+                                                        // Find errors that intersect with the current range
+                                                        const relevantErrors = errors.filter(error => {
+                                                            const errorStartLine = error.line;
+                                                            const errorEndLine = error.endLine || error.line;
+                                                            
+                                                            // Simple overlap check
+                                                            return (startLine >= errorStartLine && startLine <= errorEndLine) ||
+                                                                   (errorStartLine <= endLine && errorEndLine >= startLine);
+                                                        });
+                                                        
+                                                        relevantErrors.forEach(error => {
+                                                            // Add "Ignore this" action using commands instead of edits
+                                                            actions.push({
+                                                                title: `Ignore this ${window.getErrorTypeName(error.type)}`,
+                                                                kind: 'quickfix',
+                                                                command: {
+                                                                    id: 'nr-analyzer.ignore',
+                                                                    title: `Ignore this ${window.getErrorTypeName(error.type)}`,
+                                                                    arguments: [currentEditor, error]
+                                                                }
+                                                            });
+                                                            
+                                                            // Add "Remove this" action for removable types
+                                                            if (window.isRemovableErrorType(error.type)) {
+                                                                actions.push({
+                                                                    title: `Remove this ${window.getErrorTypeName(error.type)}`,
+                                                                    kind: 'quickfix', 
+                                                                    command: {
+                                                                        id: 'nr-analyzer.remove',
+                                                                        title: `Remove this ${window.getErrorTypeName(error.type)}`,
+                                                                        arguments: [currentEditor, error]
+                                                                    }
+                                                                });
+                                                            }
+                                                        });
+                                                        
+                                                        return { actions: actions, dispose: function() {} };
+                                                    } catch (e) {
+                                                        console.error('Quick Fix error:', e);
+                                                        return { actions: [], dispose: function() {} };
+                                                    }
+                                                }
+                                            };
+                                            
+                                            monaco.languages.registerCodeActionProvider('javascript', codeActionsProvider);
+                                            
+                                            // Register command handlers for Quick Fix actions
+                                            if (!window.nrAnalyzerCommandsRegistered) {
+                                                // Ignore command
+                                                monaco.editor.registerCommand('nr-analyzer.ignore', function(accessor, editor, error) {
+                                                    try {
+                                                        const model = editor.getModel();
+                                                        const startLine = error.line;
+                                                        const endLine = error.endLine || error.line;
+                                                        
+                                                        // Get the indentation of the first comment line to match it
+                                                        const firstCommentLineContent = model.getLineContent(startLine);
+                                                        const indentationMatch = firstCommentLineContent.match(/^(\s*)/);
+                                                        const indentation = indentationMatch ? indentationMatch[1] : '';
+                                                        
+                                                        // Use executeEdits for more reliable editing
+                                                        editor.executeEdits('nr-analyzer', [
+                                                            {
+                                                                range: new monaco.Range(startLine, 1, startLine, 1),
+                                                                text: `${indentation}// @nr-analyzer-ignore-start\n`,
+                                                                forceMoveMarkers: true
+                                                            },
+                                                            {
+                                                                range: new monaco.Range(endLine + 1, 1, endLine + 1, 1),
+                                                                text: `${indentation}// @nr-analyzer-ignore-end\n`,
+                                                                forceMoveMarkers: true
+                                                            }
+                                                        ]);
+                                                    } catch (e) {
+                                                        console.error('Ignore action failed:', e);
+                                                    }
+                                                });
+                                                
+                                                // Remove command  
+                                                monaco.editor.registerCommand('nr-analyzer.remove', function(accessor, editor, error) {
+                                                    try {
+                                                        const model = editor.getModel();
+                                                        const startLine = error.line;
+                                                        const endLine = error.endLine || error.line;
+                                                        
+                                                        // Check for empty lines above and below the comment block
+                                                        const lineAbove = startLine > 1 ? model.getLineContent(startLine - 1).trim() : 'not-empty';
+                                                        const lineBelow = endLine < model.getLineCount() ? model.getLineContent(endLine + 1).trim() : 'not-empty';
+                                                        
+                                                        let removeEndLine = endLine + 1; // Default: remove up to next line
+                                                        
+                                                        // If there are empty lines both above and below, remove one extra empty line
+                                                        if (lineAbove === '' && lineBelow === '') {
+                                                            // Remove one of the empty lines to avoid double spacing
+                                                            removeEndLine = endLine + 2; // Remove comment block + one empty line
+                                                        }
+                                                        
+                                                        // Use executeEdits to remove lines
+                                                        editor.executeEdits('nr-analyzer', [{
+                                                            range: new monaco.Range(startLine, 1, removeEndLine, 1),
+                                                            text: '',
+                                                            forceMoveMarkers: true
+                                                        }]);
+                                                    } catch (e) {
+                                                        console.error('Remove action failed:', e);
+                                                    }
+                                                });
+                                                
+                                                window.nrAnalyzerCommandsRegistered = true;
+                                            }
+                                            
+                                            window.nrAnalyzerCodeActionsProviderRegistered = true;
+                                        }
                                     }
                                 });
                             }, 200);
