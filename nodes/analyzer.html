@@ -853,24 +853,83 @@
         // Helper function to navigate to a specific flow variable location
         function navigateToLocation(targetSet, variableName) {
             const targetNode = RED.nodes.node(targetSet.nodeId);
-            if (targetNode) {
-                // Open the target node's editor
+            if (!targetNode) {
+                RED.notify(`Could not find node ${targetSet.nodeName}`, 'error');
+                return;
+            }
+
+            try {
+                // Check if RED.editor is available and ready
+                if (!RED.editor || typeof RED.editor.edit !== 'function') {
+                    console.warn('Node-RED editor not available');
+                    RED.notify('Editor not available', 'error');
+                    return;
+                }
+
+                // Ensure we're not already editing this node
+                if (RED.editor.node && RED.editor.node.id === targetNode.id) {
+                    // Already editing this node, just highlight
+                    highlightLineInEditor(targetSet);
+                    RED.notify(`Already editing ${targetSet.nodeName} - highlighted line`, 'info');
+                    return;
+                }
+
+                // Open the target node's editor with error handling
                 RED.editor.edit(targetNode);
                 
-                // Wait a bit for editor to open, then highlight the line
-                setTimeout(() => {
-                    monaco.editor.getEditors().forEach(editorInstance => {
-                        if (editorInstance.getModel()) {
+                // Wait for editor to fully initialize before highlighting
+                const maxAttempts = 15;
+                let attempts = 0;
+                
+                const waitForEditor = () => {
+                    attempts++;
+                    const editors = monaco?.editor?.getEditors ? monaco.editor.getEditors() : [];
+                    const hasValidEditor = editors.some(ed => {
+                        try {
+                            return ed.getModel() && !ed.getModel().isDisposed();
+                        } catch (e) {
+                            return false;
+                        }
+                    });
+                    
+                    if (hasValidEditor) {
+                        highlightLineInEditor(targetSet);
+                        RED.notify(`Navigated to flow.set('${variableName}') in ${targetSet.nodeName}`, 'success');
+                    } else if (attempts < maxAttempts) {
+                        setTimeout(waitForEditor, 200);
+                    } else {
+                        console.warn('Editor failed to initialize after', maxAttempts, 'attempts');
+                        RED.notify('Editor failed to open properly', 'error');
+                    }
+                };
+                
+                // Initial delay to let Node-RED's editor initialization complete
+                setTimeout(waitForEditor, 400);
+                
+            } catch (error) {
+                console.error('Error opening node editor:', error);
+                RED.notify('Failed to open editor: ' + error.message, 'error');
+            }
+        }
+
+        // Separate function for highlighting to improve reliability
+        function highlightLineInEditor(targetSet) {
+            try {
+                const editors = monaco?.editor?.getEditors ? monaco.editor.getEditors() : [];
+                editors.forEach(editorInstance => {
+                    try {
+                        const model = editorInstance.getModel();
+                        if (model && !model.isDisposed()) {
                             // Jump to the line and highlight
                             editorInstance.revealLineInCenter(targetSet.line);
                             editorInstance.setPosition({ 
                                 lineNumber: targetSet.line, 
-                                column: targetSet.column 
+                                column: targetSet.column || 1
                             });
                             
                             // Highlight the range temporarily
                             const decoration = editorInstance.deltaDecorations([], [{
-                                range: new monaco.Range(targetSet.line, targetSet.column, targetSet.line, targetSet.endColumn),
+                                range: new monaco.Range(targetSet.line, targetSet.column || 1, targetSet.line, targetSet.endColumn || targetSet.column + 10),
                                 options: {
                                     className: 'highlighted-line-error',
                                     isWholeLine: false
@@ -879,15 +938,19 @@
                             
                             // Remove highlight after 3 seconds
                             setTimeout(() => {
-                                editorInstance.deltaDecorations(decoration, []);
+                                try {
+                                    editorInstance.deltaDecorations(decoration, []);
+                                } catch (e) {
+                                    // Ignore errors when clearing decorations
+                                }
                             }, 3000);
                         }
-                    });
-                }, 500);
-                
-                RED.notify(`Navigated to flow.set('${variableName}') in ${targetSet.nodeName}`, 'success');
-            } else {
-                RED.notify(`Could not find node ${targetSet.nodeName}`, 'error');
+                    } catch (e) {
+                        console.error('Error with individual editor instance:', e);
+                    }
+                });
+            } catch (error) {
+                console.error('Error highlighting line in editor:', error);
             }
         }
         
