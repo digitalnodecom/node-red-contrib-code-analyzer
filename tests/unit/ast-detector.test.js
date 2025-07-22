@@ -407,7 +407,7 @@ describe('AST-based Detector', () => {
         });
         
         test('should highlight only the variable name, not the whole declaration', () => {
-            const code = `let unusedVariable = "some long value";`;
+            const code = 'let unusedVariable = "some long value";';
             
             const issues = detectDebuggingTraitsAST(code, 2);
             const unusedIssues = issues.filter(issue => issue.type === 'unused-variable');
