@@ -29,6 +29,7 @@
     }
   },
   "dependencies": {
+    "is-docker": "^3.0.0",
     "meriyah": "^6.1.4",
     "sqlite3": "^5.1.7"
   },

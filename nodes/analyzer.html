@@ -343,7 +343,8 @@
                     
                     const msg = messages[messageIndex];
                     const icon = msg.type === 'success' ? '✓' : 
-                               msg.type === 'error' ? '✗' : 'ℹ';
+                               msg.type === 'error' ? '✗' :
+                               msg.type === 'warning' ? '⚠️' : 'ℹ';
                     
                     // Update button text based on message content
                     if (msg.message.includes('Trying to create database')) {
@@ -356,11 +357,12 @@
                         $button.html(`<i class="fa fa-clock-o"></i> Waiting...`);
                     }
                     
-                    // Add message to log
+                    // Add message to log with appropriate colors
                     $progressLog.append(`<div style="margin: 2px 0; color: ${
                         msg.type === 'success' ? '#155724' : 
-                        msg.type === 'error' ? '#721c24' : '#856404'
-                    };">${icon} ${msg.message}</div>`);
+                        msg.type === 'error' ? '#721c24' :
+                        msg.type === 'warning' ? '#856404' : '#6c757d'
+                    }; ${msg.type === 'warning' ? 'font-weight: bold;' : ''}">${icon} ${msg.message}</div>`);
                     
                     // Auto-scroll to bottom
                     $progressLog.scrollTop($progressLog[0].scrollHeight);
