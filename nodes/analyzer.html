@@ -136,30 +136,147 @@
                 performanceThresholdRows.toggle(isPerformanceMonitoringEnabled);
                 performanceIntervalRow.toggle(isPerformanceMonitoringEnabled);
                 
-                // Update database path display
-                updateDatabasePath();
+                // Update database status display
+                updateDatabaseStatus();
             }
             
-            function updateDatabasePath() {
-                // Get the database path from our API endpoint
-                fetch('/code-analyzer/db-path')
+            function updateDatabaseStatus() {
+                // Check database status
+                fetch('/code-analyzer/api/database-status')
                     .then(response => response.json())
                     .then(data => {
-                        $('#db-path-text').text(data.dbPath);
+                        updateDatabaseUI(data);
                     })
                     .catch(error => {
-                        console.error('Error fetching database path:', error);
-                        $('#db-path-text').text('Error loading database path');
+                        console.error('Error checking database status:', error);
+                        $('#db-status-text').text('Error checking database status');
+                        showDatabaseCreationSection(true);
+                        setDbDependentFeaturesEnabled(false);
                     });
             }
+
+            function updateDatabaseUI(status) {
+                if (status.exists && status.initialized) {
+                    // Database exists and is ready
+                    $('#db-status-display').css('background-color', '#d4edda').css('color', '#155724').css('border', '1px solid #c3e6cb');
+                    $('#db-status-text').text('✓ Database is ready and initialized');
+                    $('#db-path-text').text(status.dbPath);
+                    showDatabaseCreationSection(false);
+                    setDbDependentFeaturesEnabled(true);
+                } else if (status.exists && !status.initialized) {
+                    // Database exists but not initialized
+                    $('#db-status-display').css('background-color', '#fff3cd').css('color', '#856404').css('border', '1px solid #ffeeba');
+                    $('#db-status-text').text('⚠ Database exists but not initialized');
+                    $('#db-path-text').text(status.dbPath);
+                    showDatabaseCreationSection(true);
+                    setDbDependentFeaturesEnabled(false);
+                } else {
+                    // Database does not exist
+                    $('#db-status-display').css('background-color', '#f8d7da').css('color', '#721c24').css('border', '1px solid #f5c6cb');
+                    $('#db-status-text').text('✗ Database not created');
+                    $('#db-path-text').text(status.dbPath || 'Database path not available');
+                    showDatabaseCreationSection(true);
+                    setDbDependentFeaturesEnabled(false);
+                }
+            }
+
+            function showDatabaseCreationSection(show) {
+                $('#db-creation-section').toggle(show);
+            }
+
+            function setDbDependentFeaturesEnabled(enabled) {
+                // Gray out/enable database-dependent settings
+                const $dbSettings = $('#db-dependent-settings');
+                const $perfMonitoring = $('#performance-monitoring-tab .form-row-performanceThreshold, #performance-monitoring-tab .form-row-performanceInterval');
+                const $dashboardRow = $('.form-row').has('#dashboard-link');
+                
+                if (enabled) {
+                    $dbSettings.css('opacity', '1').find('input, select').prop('disabled', false);
+                    $perfMonitoring.css('opacity', '1').find('input, select').prop('disabled', false);
+                    $dashboardRow.css('opacity', '1').find('a, button').prop('disabled', false);
+                } else {
+                    $dbSettings.css('opacity', '0.5').find('input, select').prop('disabled', true);
+                    $perfMonitoring.css('opacity', '0.5').find('input, select').prop('disabled', true);
+                    $dashboardRow.css('opacity', '0.5').find('a, button').prop('disabled', true);
+                    
+                    // Show message about needing to create database
+                    if (!enabled && $('#db-dependency-message').length === 0) {
+                        $dbSettings.prepend('<div id="db-dependency-message" style="background: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #ffeeba;">📋 Create the database above to enable these features</div>');
+                    }
+                    
+                    // Add message to performance monitoring tab
+                    if (!enabled && $('#perf-dependency-message').length === 0) {
+                        $('#performance-monitoring-tab .form-row-performanceThreshold').first().before('<div id="perf-dependency-message" style="background: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #ffeeba;">📋 Create the database in General tab to enable performance monitoring storage</div>');
+                    }
+                }
+                
+                if (enabled) {
+                    $('#db-dependency-message').remove();
+                    $('#perf-dependency-message').remove();
+                }
+            }
+
+            function createDatabase() {
+                const $button = $('#create-db-button');
+                const $message = $('#db-creation-message');
+                
+                // Disable button and show loading
+                $button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Creating Database...');
+                $message.hide();
+                
+                fetch('/code-analyzer/api/create-database', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Success
+                        $message.css('background-color', '#d4edda')
+                               .css('color', '#155724')
+                               .css('border', '1px solid #c3e6cb')
+                               .text('✓ ' + data.message)
+                               .show();
+                        
+                        // Refresh database status
+                        setTimeout(() => {
+                            updateDatabaseStatus();
+                        }, 500);
+                    } else {
+                        // Error
+                        $message.css('background-color', '#f8d7da')
+                               .css('color', '#721c24')
+                               .css('border', '1px solid #f5c6cb')
+                               .text('✗ ' + (data.error || 'Unknown error'))
+                               .show();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error creating database:', error);
+                    $message.css('background-color', '#f8d7da')
+                           .css('color', '#721c24')
+                           .css('border', '1px solid #f5c6cb')
+                           .text('✗ Failed to create database: ' + error.message)
+                           .show();
+                })
+                .finally(() => {
+                    // Re-enable button
+                    $button.prop('disabled', false).html('<i class="fa fa-plus"></i> Create Database');
+                });
+            }
+
+            // Bind create database button
+            $(document).off('click', '#create-db-button').on('click', '#create-db-button', createDatabase);
             
             performanceMonitoringCheckbox.on('change', updatePerformanceVisibility);
             
             // Initial performance visibility setup
             updatePerformanceVisibility();
             
-            // Load database path on initialization
-            updateDatabasePath();
+            // Load database status on initialization
+            updateDatabaseStatus();
         },
         oneditsave: function() {
             // Collect checked queue IDs
@@ -2465,18 +2582,44 @@
                 <div class="form-tips">View comprehensive code quality metrics, trends, and performance analytics in a dedicated dashboard</div>
             </div>
             
-            <div class="form-row-stacked">
-                <label for="node-input-dbRetentionDays"><i class="fa fa-database"></i> Database Retention (days)</label>
-                <input type="number" id="node-input-dbRetentionDays" placeholder="7" min="1" max="30">
-                <div class="form-tips">Keep quality metrics and performance data for this many days (1-30 days)</div>
-            </div>
-            
-            <div class="form-row-stacked">
-                <label><i class="fa fa-database"></i> Database Location</label>
-                <div id="db-path-display" style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 4px; margin-top: 5px; word-break: break-all; font-size: 11px;">
-                    <span id="db-path-text">Loading database path...</span>
+            <!-- Database Management Section -->
+            <div class="form-row-stacked" id="database-management-section">
+                <label><i class="fa fa-database"></i> Database Management</label>
+                
+                <!-- Database Status -->
+                <div id="db-status-display" style="margin: 8px 0; padding: 8px; border-radius: 4px; font-size: 12px;">
+                    <span id="db-status-text">Checking database status...</span>
                 </div>
-                <div class="form-tips">SQLite database file location for code quality metrics and performance data</div>
+                
+                <!-- Create Database Button and Messages -->
+                <div id="db-creation-section" style="display: none;">
+                    <div style="margin: 10px 0;">
+                        <button type="button" id="create-db-button" class="red-ui-button" style="margin-right: 10px;">
+                            <i class="fa fa-plus"></i> Create Database
+                        </button>
+                        <div id="db-creation-message" style="margin-top: 8px; padding: 8px; border-radius: 4px; display: none;"></div>
+                    </div>
+                    <div class="form-tips">
+                        The database is required for quality dashboard, database retention, and performance monitoring features.
+                    </div>
+                </div>
+                
+                <!-- Database-dependent settings -->
+                <div id="db-dependent-settings">
+                    <div class="form-row-stacked" style="margin-top: 15px;">
+                        <label for="node-input-dbRetentionDays"><i class="fa fa-calendar"></i> Database Retention (days)</label>
+                        <input type="number" id="node-input-dbRetentionDays" placeholder="7" min="1" max="30">
+                        <div class="form-tips">Keep quality metrics and performance data for this many days (1-30 days)</div>
+                    </div>
+                    
+                    <div class="form-row-stacked">
+                        <label><i class="fa fa-folder-open"></i> Database Location</label>
+                        <div id="db-path-display" style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 4px; margin-top: 5px; word-break: break-all; font-size: 11px;">
+                            <span id="db-path-text">Loading database path...</span>
+                        </div>
+                        <div class="form-tips">SQLite database file location for code quality metrics and performance data</div>
+                    </div>
+                </div>
             </div>
         </div>
         

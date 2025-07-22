@@ -62,9 +62,13 @@ module.exports = function(RED) {
         // Initialize quality metrics calculator
         const qualityMetrics = new QualityMetrics();
         
-        // Initialize database for quality metrics storage
+        // Initialize database for quality metrics storage (without auto-creation)
         if (!RED.qualityDatabase) {
             RED.qualityDatabase = new PerformanceDatabase();
+            // Only initialize if database already exists
+            if (RED.qualityDatabase.databaseExists()) {
+                RED.qualityDatabase.initDatabase();
+            }
         }
         
         let scanTimer;
@@ -1072,6 +1076,58 @@ module.exports = function(RED) {
             res.status(500).json({ 
                 error: 'Failed to get alerts', 
                 details: error.message 
+            });
+        }
+    });
+
+    // API: Create database
+    RED.httpAdmin.post('/code-analyzer/api/create-database', async function(req, res) {
+        try {
+            if (!RED.qualityDatabase) {
+                RED.qualityDatabase = new PerformanceDatabase();
+            }
+
+            // Check if database already exists
+            if (RED.qualityDatabase.databaseExists()) {
+                return res.json({ 
+                    success: true,
+                    message: 'Database already exists',
+                    dbPath: RED.qualityDatabase.dbPath
+                });
+            }
+
+            // Create the database
+            const result = await RED.qualityDatabase.createDatabase();
+            
+            res.json({
+                success: true,
+                message: result.message,
+                dbPath: result.dbPath
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                error: 'Failed to create database',
+                details: error.message
+            });
+        }
+    });
+
+    // API: Check database status
+    RED.httpAdmin.get('/code-analyzer/api/database-status', function(req, res) {
+        try {
+            const dbExists = RED.qualityDatabase && RED.qualityDatabase.databaseExists();
+            const isInitialized = RED.qualityDatabase && RED.qualityDatabase.initialized;
+            
+            res.json({
+                exists: dbExists,
+                initialized: isInitialized,
+                dbPath: RED.qualityDatabase ? RED.qualityDatabase.dbPath : null
+            });
+        } catch (error) {
+            res.status(500).json({
+                error: 'Failed to check database status',
+                details: error.message
             });
         }
     });
