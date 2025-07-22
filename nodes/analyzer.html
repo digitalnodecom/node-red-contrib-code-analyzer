@@ -161,7 +161,12 @@
                     $('#db-status-display').css('background-color', '#d4edda').css('color', '#155724').css('border', '1px solid #c3e6cb');
                     $('#db-status-text').text('✓ Database is ready and initialized');
                     $('#db-path-text').text(status.dbPath);
-                    showDatabaseCreationSection(false);
+                    // ALWAYS keep creation section visible if there's an active message OR it was previously shown
+                    if ($('#db-creation-message').is(':visible') || $('#db-creation-section').is(':visible')) {
+                        showDatabaseCreationSection(true); // Ensure it stays visible
+                    } else {
+                        showDatabaseCreationSection(false); // Only hide if never used
+                    }
                     setDbDependentFeaturesEnabled(true);
                 } else if (status.exists && !status.initialized) {
                     // Database exists but not initialized
@@ -223,8 +228,13 @@
                 // Disable button and show initial loading
                 $button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Initializing...');
                 
-                // Clear previous messages and show progress container
-                $message.html('<div id="db-progress-log" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.4;"></div>')
+                // Clear previous messages and show progress container  
+                $message.html(`
+                    <button id="db-message-close" style="position: absolute; top: 4px; right: 6px; background: none; border: none; font-size: 16px; cursor: pointer; color: inherit; opacity: 0.7; z-index: 10;" title="Close message">×</button>
+                    <div id="db-progress-log" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.4; padding-right: 20px;">
+                        <div style="color: #6c757d; font-style: italic;">🔄 Starting database creation process...</div>
+                    </div>
+                `)
                         .css('background-color', '#f8f9fa')
                         .css('color', '#495057')
                         .css('border', '1px solid #dee2e6')
@@ -241,74 +251,66 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success) {
-                        // Success - database created
-                        $message.css('background-color', '#d4edda')
-                               .css('color', '#155724')
-                               .css('border', '1px solid #c3e6cb');
-                        
-                        // Show detailed creation log
-                        if (data.creationMessages && data.creationMessages.length > 0) {
-                            data.creationMessages.forEach(msg => {
-                                const icon = msg.type === 'success' ? '✓' : 
-                                           msg.type === 'error' ? '✗' : 'ℹ';
-                                
-                                $progressLog.append(`<div style="margin: 2px 0; color: ${
-                                    msg.type === 'success' ? '#155724' : 
-                                    msg.type === 'error' ? '#721c24' : '#856404'
-                                };">${icon} ${msg.message}</div>`);
-                            });
-                        }
-                        
-                        $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #155724;">🎉 ${data.message}</div>`);
-                        $progressLog.append(`<div style="margin: 5px 0; color: #155724;">Database location: ${data.dbPath}</div>`);
-                        
-                        if (data.attemptedLocations > 1) {
-                            $progressLog.append(`<div style="margin: 5px 0; color: #856404;">⚠️ Required ${data.attemptedLocations} location attempts (some locations failed)</div>`);
-                        } else {
-                            $progressLog.append(`<div style="margin: 5px 0; color: #6c757d;">✨ Created successfully on first attempt</div>`);
-                        }
-                        
-                        $button.prop('disabled', false).html('<i class="fa fa-check"></i> Database Created');
-                        
-                        // Refresh database status
-                        setTimeout(() => {
+                    // Simulate progressive message display for better UX
+                    if (data.success && data.creationMessages && data.creationMessages.length > 0) {
+                        displayMessagesProgressively(data.creationMessages, $progressLog, $button, () => {
+                            // Success completion callback
+                            $message.css('background-color', '#d4edda')
+                                   .css('color', '#155724')
+                                   .css('border', '1px solid #c3e6cb');
+                            
+                            $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #155724;">🎉 ${data.message}</div>`);
+                            $progressLog.append(`<div style="margin: 5px 0; color: #155724;">Database location: ${data.dbPath}</div>`);
+                            
+                            if (data.attemptedLocations > 1) {
+                                $progressLog.append(`<div style="margin: 5px 0; color: #856404;">⚠️ Required ${data.attemptedLocations} location attempts (some locations failed)</div>`);
+                            } else {
+                                $progressLog.append(`<div style="margin: 5px 0; color: #6c757d;">✨ Created successfully on first attempt</div>`);
+                            }
+                            
+                            $button.prop('disabled', false).html('<i class="fa fa-check"></i> Database Created');
                             updateDatabaseStatus();
-                            $button.html('<i class="fa fa-plus"></i> Create Database');
-                        }, 2000);
-                        
+                            setTimeout(() => {
+                                $button.html('<i class="fa fa-plus"></i> Create Database');
+                            }, 3000);
+                            
+                            $progressLog.scrollTop($progressLog[0].scrollHeight);
+                        });
+                    } else if (!data.success && data.creationMessages && data.creationMessages.length > 0) {
+                        displayMessagesProgressively(data.creationMessages, $progressLog, $button, () => {
+                            // Error completion callback
+                            $message.css('background-color', '#f8d7da')
+                                   .css('color', '#721c24')
+                                   .css('border', '1px solid #f5c6cb');
+                            
+                            $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #721c24;">❌ ${data.error || 'Creation failed'}</div>`);
+                            if (data.details) {
+                                $progressLog.append(`<div style="margin: 5px 0; color: #721c24;">Details: ${data.details}</div>`);
+                            }
+                            
+                            $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> All Locations Failed');
+                            setTimeout(() => {
+                                $button.html('<i class="fa fa-plus"></i> Create Database');
+                            }, 3000);
+                            
+                            $progressLog.scrollTop($progressLog[0].scrollHeight);
+                        });
                     } else {
-                        // Error - all locations failed
-                        $message.css('background-color', '#f8d7da')
-                               .css('color', '#721c24')
-                               .css('border', '1px solid #f5c6cb');
-                        
-                        // Show detailed failure log
-                        if (data.creationMessages && data.creationMessages.length > 0) {
-                            data.creationMessages.forEach(msg => {
-                                const icon = msg.type === 'success' ? '✓' : 
-                                           msg.type === 'error' ? '✗' : 'ℹ';
-                                
-                                $progressLog.append(`<div style="margin: 2px 0; color: ${
-                                    msg.type === 'success' ? '#155724' : 
-                                    msg.type === 'error' ? '#721c24' : '#856404'
-                                };">${icon} ${msg.message}</div>`);
-                            });
+                        // Handle case without detailed messages (shouldn't happen but fallback)
+                        if (data.success) {
+                            $message.css('background-color', '#d4edda').css('color', '#155724').css('border', '1px solid #c3e6cb');
+                            $progressLog.append(`<div style="color: #155724;">✓ ${data.message}</div>`);
+                            $button.prop('disabled', false).html('<i class="fa fa-check"></i> Database Created');
+                            updateDatabaseStatus();
+                        } else {
+                            $message.css('background-color', '#f8d7da').css('color', '#721c24').css('border', '1px solid #f5c6cb');
+                            $progressLog.append(`<div style="color: #721c24;">✗ ${data.error}</div>`);
+                            $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> Creation Failed');
                         }
-                        
-                        $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #721c24;">❌ ${data.error || 'Creation failed'}</div>`);
-                        if (data.details) {
-                            $progressLog.append(`<div style="margin: 5px 0; color: #721c24;">Details: ${data.details}</div>`);
-                        }
-                        
-                        $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> All Locations Failed');
-                        
                         setTimeout(() => {
                             $button.html('<i class="fa fa-plus"></i> Create Database');
-                        }, 4000);
+                        }, 3000);
                     }
-                    
-                    $progressLog.scrollTop($progressLog[0].scrollHeight);
                 })
                 .catch(error => {
                     console.error('Error creating database:', error);
@@ -327,8 +329,103 @@
                 });
             }
 
+            // Function to display messages progressively for better UX
+            function displayMessagesProgressively(messages, $progressLog, $button, completionCallback) {
+                let messageIndex = 0;
+                let attemptNumber = 1;
+                
+                function showNextMessage() {
+                    if (messageIndex >= messages.length) {
+                        // All messages shown, call completion callback
+                        completionCallback();
+                        return;
+                    }
+                    
+                    const msg = messages[messageIndex];
+                    const icon = msg.type === 'success' ? '✓' : 
+                               msg.type === 'error' ? '✗' : 'ℹ';
+                    
+                    // Update button text based on message content
+                    if (msg.message.includes('Trying to create database')) {
+                        const location = msg.message.match(/in (.+?) \(/);
+                        if (location) {
+                            $button.html(`<i class="fa fa-spinner fa-spin"></i> Attempt ${attemptNumber}: ${location[1]}`);
+                            attemptNumber++;
+                        }
+                    } else if (msg.message.includes('Waiting 1.5 seconds')) {
+                        $button.html(`<i class="fa fa-clock-o"></i> Waiting...`);
+                    }
+                    
+                    // Add message to log
+                    $progressLog.append(`<div style="margin: 2px 0; color: ${
+                        msg.type === 'success' ? '#155724' : 
+                        msg.type === 'error' ? '#721c24' : '#856404'
+                    };">${icon} ${msg.message}</div>`);
+                    
+                    // Auto-scroll to bottom
+                    $progressLog.scrollTop($progressLog[0].scrollHeight);
+                    
+                    messageIndex++;
+                    
+                    // Determine delay based on message type
+                    let delay = 500; // Default delay
+                    if (msg.message.includes('Waiting 1.5 seconds')) {
+                        delay = 1500; // Match the actual wait time
+                    } else if (msg.message.includes('Trying to create database')) {
+                        delay = 800; // Slightly longer for attempts
+                    } else if (msg.message.includes('Failed to create database')) {
+                        delay = 1200; // Give time to read error
+                    } else if (msg.type === 'success') {
+                        delay = 600; // Success messages
+                    }
+                    
+                    setTimeout(showNextMessage, delay);
+                }
+                
+                // Start showing messages
+                showNextMessage();
+            }
+
             // Bind create database button
             $(document).off('click', '#create-db-button').on('click', '#create-db-button', createDatabase);
+            
+            // Bind close button for database messages (persistent until manually closed)
+            $(document).off('click', '#db-message-close').on('click', '#db-message-close', function() {
+                $('#db-creation-message').hide();
+            });
+            
+            // Auto-close database messages when configuration dialog is closed or cancelled
+            // Store original handlers
+            if (!node._originalOnEditSave) {
+                node._originalOnEditSave = node.oneditsave;
+            }
+            if (!node._originalOnEditCancel) {
+                node._originalOnEditCancel = node.oneditcancel;
+            }
+            
+            // Override handlers to hide message on dialog close
+            node.oneditsave = function() {
+                $('#db-creation-message').hide();
+                if (node._originalOnEditSave) {
+                    return node._originalOnEditSave.apply(this, arguments);
+                }
+            };
+            
+            node.oneditcancel = function() {
+                $('#db-creation-message').hide();
+                if (node._originalOnEditCancel) {
+                    return node._originalOnEditCancel.apply(this, arguments);
+                }
+            };
+            
+            // Add hover effect for close button
+            $(document).off('mouseenter mouseleave', '#db-message-close')
+                       .on('mouseenter', '#db-message-close', function() {
+                           $(this).css('opacity', '1');
+                       })
+                       .on('mouseleave', '#db-message-close', function() {
+                           $(this).css('opacity', '0.7');
+                       });
             
             performanceMonitoringCheckbox.on('change', updatePerformanceVisibility);
             
@@ -2657,7 +2754,9 @@
                         <button type="button" id="create-db-button" class="red-ui-button" style="margin-right: 10px;">
                             <i class="fa fa-plus"></i> Create Database
                         </button>
-                        <div id="db-creation-message" style="margin-top: 8px; padding: 8px; border-radius: 4px; display: none;"></div>
+                        <div id="db-creation-message" style="margin-top: 8px; padding: 8px; border-radius: 4px; display: none; position: relative;">
+                            <button id="db-message-close" style="position: absolute; top: 4px; right: 6px; background: none; border: none; font-size: 16px; cursor: pointer; color: inherit; opacity: 0.7;" title="Close message">×</button>
+                        </div>
                     </div>
                     <div class="form-tips">
                         The database is required for quality dashboard, database retention, and performance monitoring features.
