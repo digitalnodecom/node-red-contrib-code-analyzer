@@ -220,10 +220,19 @@
                 const $button = $('#create-db-button');
                 const $message = $('#db-creation-message');
                 
-                // Disable button and show loading
-                $button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Creating Database...');
-                $message.hide();
+                // Disable button and show initial loading
+                $button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Initializing...');
                 
+                // Clear previous messages and show progress container
+                $message.html('<div id="db-progress-log" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.4;"></div>')
+                        .css('background-color', '#f8f9fa')
+                        .css('color', '#495057')
+                        .css('border', '1px solid #dee2e6')
+                        .show();
+                
+                const $progressLog = $('#db-progress-log');
+                
+                // Use the regular API but display detailed messages from fallback attempts
                 fetch('/code-analyzer/api/create-database', {
                     method: 'POST',
                     headers: {
@@ -233,37 +242,88 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Success
+                        // Success - database created
                         $message.css('background-color', '#d4edda')
                                .css('color', '#155724')
-                               .css('border', '1px solid #c3e6cb')
-                               .text('✓ ' + data.message)
-                               .show();
+                               .css('border', '1px solid #c3e6cb');
+                        
+                        // Show detailed creation log
+                        if (data.creationMessages && data.creationMessages.length > 0) {
+                            data.creationMessages.forEach(msg => {
+                                const icon = msg.type === 'success' ? '✓' : 
+                                           msg.type === 'error' ? '✗' : 'ℹ';
+                                
+                                $progressLog.append(`<div style="margin: 2px 0; color: ${
+                                    msg.type === 'success' ? '#155724' : 
+                                    msg.type === 'error' ? '#721c24' : '#856404'
+                                };">${icon} ${msg.message}</div>`);
+                            });
+                        }
+                        
+                        $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #155724;">🎉 ${data.message}</div>`);
+                        $progressLog.append(`<div style="margin: 5px 0; color: #155724;">Database location: ${data.dbPath}</div>`);
+                        
+                        if (data.attemptedLocations > 1) {
+                            $progressLog.append(`<div style="margin: 5px 0; color: #856404;">⚠️ Required ${data.attemptedLocations} location attempts (some locations failed)</div>`);
+                        } else {
+                            $progressLog.append(`<div style="margin: 5px 0; color: #6c757d;">✨ Created successfully on first attempt</div>`);
+                        }
+                        
+                        $button.prop('disabled', false).html('<i class="fa fa-check"></i> Database Created');
                         
                         // Refresh database status
                         setTimeout(() => {
                             updateDatabaseStatus();
-                        }, 500);
+                            $button.html('<i class="fa fa-plus"></i> Create Database');
+                        }, 2000);
+                        
                     } else {
-                        // Error
+                        // Error - all locations failed
                         $message.css('background-color', '#f8d7da')
                                .css('color', '#721c24')
-                               .css('border', '1px solid #f5c6cb')
-                               .text('✗ ' + (data.error || 'Unknown error'))
-                               .show();
+                               .css('border', '1px solid #f5c6cb');
+                        
+                        // Show detailed failure log
+                        if (data.creationMessages && data.creationMessages.length > 0) {
+                            data.creationMessages.forEach(msg => {
+                                const icon = msg.type === 'success' ? '✓' : 
+                                           msg.type === 'error' ? '✗' : 'ℹ';
+                                
+                                $progressLog.append(`<div style="margin: 2px 0; color: ${
+                                    msg.type === 'success' ? '#155724' : 
+                                    msg.type === 'error' ? '#721c24' : '#856404'
+                                };">${icon} ${msg.message}</div>`);
+                            });
+                        }
+                        
+                        $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #721c24;">❌ ${data.error || 'Creation failed'}</div>`);
+                        if (data.details) {
+                            $progressLog.append(`<div style="margin: 5px 0; color: #721c24;">Details: ${data.details}</div>`);
+                        }
+                        
+                        $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> All Locations Failed');
+                        
+                        setTimeout(() => {
+                            $button.html('<i class="fa fa-plus"></i> Create Database');
+                        }, 4000);
                     }
+                    
+                    $progressLog.scrollTop($progressLog[0].scrollHeight);
                 })
                 .catch(error => {
                     console.error('Error creating database:', error);
+                    
                     $message.css('background-color', '#f8d7da')
                            .css('color', '#721c24')
-                           .css('border', '1px solid #f5c6cb')
-                           .text('✗ Failed to create database: ' + error.message)
-                           .show();
-                })
-                .finally(() => {
-                    // Re-enable button
-                    $button.prop('disabled', false).html('<i class="fa fa-plus"></i> Create Database');
+                           .css('border', '1px solid #f5c6cb');
+                    
+                    $progressLog.append(`<div style="margin: 10px 0; font-weight: bold; color: #721c24;">❌ Network error: ${error.message}</div>`);
+                    
+                    $button.prop('disabled', false).html('<i class="fa fa-exclamation-triangle"></i> Network Error');
+                    
+                    setTimeout(() => {
+                        $button.html('<i class="fa fa-plus"></i> Create Database');
+                    }, 3000);
                 });
             }
 

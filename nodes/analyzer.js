@@ -67,7 +67,10 @@ module.exports = function(RED) {
             RED.qualityDatabase = new PerformanceDatabase();
             // Only initialize if database already exists
             if (RED.qualityDatabase.databaseExists()) {
-                RED.qualityDatabase.initDatabase();
+                RED.qualityDatabase.initDatabase().catch(err => {
+                    node.warn(`Failed to initialize existing database: ${err.message}`);
+                    RED.qualityDatabase.initialized = false;
+                });
             }
         }
         
@@ -1080,7 +1083,7 @@ module.exports = function(RED) {
         }
     });
 
-    // API: Create database
+    // API: Create database with fallback locations
     RED.httpAdmin.post('/code-analyzer/api/create-database', async function(req, res) {
         try {
             if (!RED.qualityDatabase) {
@@ -1096,18 +1099,86 @@ module.exports = function(RED) {
                 });
             }
 
-            // Create the database
+            // Create the database with progress tracking
             const result = await RED.qualityDatabase.createDatabase();
             
             res.json({
                 success: true,
                 message: result.message,
-                dbPath: result.dbPath
+                dbPath: result.dbPath,
+                attemptedLocations: result.attemptedLocations,
+                creationMessages: result.messages
             });
         } catch (error) {
             res.status(500).json({
                 success: false,
-                error: 'Failed to create database',
+                error: 'Failed to create database in all locations',
+                details: error.message,
+                creationMessages: RED.qualityDatabase ? RED.qualityDatabase.creationMessages : []
+            });
+        }
+    });
+
+    // API: Create database with streaming progress updates
+    RED.httpAdmin.post('/code-analyzer/api/create-database-with-progress', function(req, res) {
+        try {
+            if (!RED.qualityDatabase) {
+                RED.qualityDatabase = new PerformanceDatabase();
+            }
+
+            // Check if database already exists
+            if (RED.qualityDatabase.databaseExists()) {
+                return res.json({ 
+                    success: true,
+                    message: 'Database already exists',
+                    dbPath: RED.qualityDatabase.dbPath
+                });
+            }
+
+            // Set up Server-Sent Events for progress updates
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*'
+            });
+
+            // Progress callback function
+            const progressCallback = (progress) => {
+                res.write(`data: ${JSON.stringify({
+                    type: 'progress',
+                    ...progress
+                })}\n\n`);
+            };
+
+            // Create database with progress updates
+            RED.qualityDatabase.createDatabase(progressCallback)
+                .then((result) => {
+                    res.write(`data: ${JSON.stringify({
+                        type: 'complete',
+                        success: true,
+                        message: result.message,
+                        dbPath: result.dbPath,
+                        attemptedLocations: result.attemptedLocations,
+                        creationMessages: result.messages
+                    })}\n\n`);
+                    res.end();
+                })
+                .catch((error) => {
+                    res.write(`data: ${JSON.stringify({
+                        type: 'error',
+                        success: false,
+                        error: 'Failed to create database in all locations',
+                        details: error.message,
+                        creationMessages: RED.qualityDatabase.creationMessages || []
+                    })}\n\n`);
+                    res.end();
+                });
+
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                error: 'Failed to start database creation',
                 details: error.message
             });
         }
